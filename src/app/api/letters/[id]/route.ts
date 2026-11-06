@@ -22,6 +22,7 @@ export async function GET(req: NextRequest, context: RouteContext) {
         content: true,
         entryType: true,
         visibility: true,
+        isModerated: true,
         tags: true,
         createdAt: true,
         updatedAt: true,
@@ -39,9 +40,9 @@ export async function GET(req: NextRequest, context: RouteContext) {
     }
 
     // Access control:
-    // If content is PRIVATE or a NOTE, it can only be viewed by its author.
+    // If content is PRIVATE, a NOTE, or HELD/MODERATED, it can only be viewed by its author.
     const isOwner = session && session.user.id === letter.authorId;
-    if ((letter.visibility === "PRIVATE" || letter.entryType === "NOTE") && !isOwner) {
+    if ((letter.visibility === "PRIVATE" || letter.entryType === "NOTE" || letter.isModerated) && !isOwner) {
       return NextResponse.json(
         {
           success: false,
@@ -156,6 +157,7 @@ export async function PATCH(req: NextRequest, context: RouteContext) {
         content: true,
         entryType: true,
         visibility: true,
+        isModerated: true,
         tags: true,
         updatedAt: true,
       },

@@ -1,7 +1,6 @@
 import { db } from "../src/lib/db";
 import { generateUnsentId } from "../src/lib/auth/identity";
 import { generateRecoveryKey, hashSecret } from "../src/lib/auth/crypto";
-import { hashToken, generateSecureToken } from "../src/lib/auth/session";
 import { evaluateSafety } from "../src/lib/safety/gate";
 import { orbitQuerySchema } from "../src/lib/validation/letters";
 import { APPROVED_THEMES, isValidTheme, normalizeTheme } from "../src/lib/constants/themes";

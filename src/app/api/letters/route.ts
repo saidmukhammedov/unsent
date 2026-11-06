@@ -94,6 +94,7 @@ export async function POST(req: NextRequest) {
 
     let isModerated = false;
     let moderationReason: string | null = null;
+    let moderationStatus = effectiveVisibility === "PUBLIC" ? "APPROVED" : "UNMODERATED";
     let statusMessage: string | null = null;
 
     // 2. Public Publishing Safety Gate
@@ -119,6 +120,7 @@ export async function POST(req: NextRequest) {
       if (safetyResult.action === "HOLD") {
         isModerated = true;
         moderationReason = safetyResult.reason || "Held for review due to potential identifying info.";
+        moderationStatus = "HELD";
         statusMessage =
           "Your letter was saved, but is held for moderation review because it may contain contact information or identifying details. It will remain private and will not appear in Orbit until reviewed.";
       }
@@ -136,6 +138,7 @@ export async function POST(req: NextRequest) {
         tags,
         isModerated,
         moderationReason,
+        moderationStatus,
         parentLetterId: parentLetterId || null,
       },
       select: {
@@ -147,6 +150,8 @@ export async function POST(req: NextRequest) {
         visibility: true,
         entryType: true,
         isModerated: true,
+        moderationReason: true,
+        moderationStatus: true,
         tags: true,
         createdAt: true,
         updatedAt: true,

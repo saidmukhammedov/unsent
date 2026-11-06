@@ -12,6 +12,12 @@ enum AccountType {
   REGISTERED
 }
 
+enum UserRole {
+  USER
+  MODERATOR
+  ADMIN
+}
+
 enum LetterVisibility {
   PRIVATE
   PUBLIC
@@ -33,6 +39,7 @@ model User {
   id              String       @id @default(uuid()) @db.Uuid
   unsentId        String       @unique @map("unsent_id") @db.VarChar(64)
   accountType     AccountType  @default(ANONYMOUS) @map("account_type")
+  role            UserRole     @default(USER)
   recoveryTokenId String       @unique @map("recovery_token_id") @db.VarChar(32)
   recoveryKeyHash String       @map("recovery_key_hash") @db.VarChar(255)
   phone           String?      @unique @db.VarChar(20)
@@ -41,11 +48,12 @@ model User {
   createdAt       DateTime     @default(now()) @map("created_at")
   updatedAt       DateTime     @updatedAt @map("updated_at")
 
-  letters       Letter[]
-  savedLetters  SavedLetter[]
-  notifications Notification[]
-  reports       Report[]       @relation("ReportAuthor")
-  sessions      Session[]
+  letters        Letter[]
+  savedLetters   SavedLetter[]
+  notifications  Notification[]
+  reports        Report[]         @relation("ReportAuthor")
+  sessions       Session[]
+  moderationLogs ModerationLog[]
 
   @@map("users")
 }
@@ -78,20 +86,25 @@ model Letter {
   tags             String[]         @default([])
   isModerated      Boolean          @default(false) @map("is_moderated")
   moderationReason String?          @map("moderation_reason") @db.VarChar(255)
+  moderationStatus String?          @default("UNMODERATED") @map("moderation_status") @db.VarChar(50)
+  moderatedAt      DateTime?        @map("moderated_at")
+  moderatorId      String?          @map("moderator_id") @db.Uuid
   parentLetterId   String?          @map("parent_letter_id") @db.Uuid
   createdAt        DateTime         @default(now()) @map("created_at")
   updatedAt        DateTime         @updatedAt @map("updated_at")
 
-  author       User?         @relation(fields: [authorId], references: [id], onDelete: SetNull)
-  parentLetter Letter?       @relation("LetterResponses", fields: [parentLetterId], references: [id], onDelete: SetNull)
-  responses    Letter[]      @relation("LetterResponses")
-  savedBy      SavedLetter[]
-  reports      Report[]
+  author         User?           @relation(fields: [authorId], references: [id], onDelete: SetNull)
+  parentLetter   Letter?         @relation("LetterResponses", fields: [parentLetterId], references: [id], onDelete: SetNull)
+  responses      Letter[]        @relation("LetterResponses")
+  savedBy        SavedLetter[]
+  reports        Report[]
+  moderationLogs ModerationLog[]
 
   @@index([visibility, entryType, isModerated, createdAt(sort: Desc)])
   @@index([visibility, entryType, isModerated, theme, createdAt(sort: Desc)])
   @@index([authorId, entryType, createdAt(sort: Desc)])
   @@index([parentLetterId])
+  @@index([moderationStatus])
   @@map("letters")
 }
 
@@ -138,5 +151,23 @@ model Report {
   letter   Letter @relation(fields: [letterId], references: [id], onDelete: Cascade)
 
   @@index([letterId, status])
+  @@index([reporterId, letterId])
   @@map("reports")
+}
+
+model ModerationLog {
+  id          String   @id @default(uuid()) @db.Uuid
+  letterId    String   @map("letter_id") @db.Uuid
+  moderatorId String?  @map("moderator_id") @db.Uuid
+  action      String   @db.VarChar(50) // "APPROVE", "REJECT", "REMOVE", "DISMISS_REPORTS"
+  reason      String?  @db.VarChar(255)
+  notes       String?  @db.Text
+  createdAt   DateTime @default(now()) @map("created_at")
+
+  letter    Letter @relation(fields: [letterId], references: [id], onDelete: Cascade)
+  moderator User?  @relation(fields: [moderatorId], references: [id], onDelete: SetNull)
+
+  @@index([letterId, createdAt(sort: Desc)])
+  @@index([moderatorId])
+  @@map("moderation_logs")
 }

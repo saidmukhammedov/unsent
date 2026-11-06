@@ -2,6 +2,7 @@ import Link from "next/link";
 import { Header } from "@/components/ui/Header";
 import { Footer } from "@/components/ui/Footer";
 import { SaveButton } from "@/components/ui/SaveButton";
+import { ReportButton } from "@/components/ui/ReportButton";
 import { getCurrentSession } from "@/lib/auth/session";
 import { db } from "@/lib/db";
 
@@ -142,11 +143,14 @@ export default async function OrbitLetterPage({ params }: PageProps) {
 
           {/* Action Footer */}
           <div className="mt-12 pt-6 border-t border-[#E8E2D7]/60 flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4">
-            <SaveButton
-              letterId={letter.id}
-              initialSaved={isSaved}
-              variant="full"
-            />
+            <div className="flex items-center gap-4">
+              <SaveButton
+                letterId={letter.id}
+                initialSaved={isSaved}
+                variant="full"
+              />
+              <ReportButton letterId={letter.id} />
+            </div>
 
             <Link
               href="/compose"

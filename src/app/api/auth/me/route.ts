@@ -10,6 +10,7 @@ export async function GET() {
       data: {
         unsentId: user.unsentId,
         accountType: user.accountType,
+        role: user.role,
         createdAt: user.createdAt,
         ...(newRecoveryKey ? { newRecoveryKey } : {}),
       },

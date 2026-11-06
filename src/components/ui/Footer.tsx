@@ -32,6 +32,12 @@ export function Footer() {
           >
             Restore Identity
           </Link>
+          <Link
+            href="/moderation"
+            className="hover:text-[#23201D] transition-colors underline-offset-4 hover:underline"
+          >
+            Stewards
+          </Link>
         </div>
       </div>
     </footer>
