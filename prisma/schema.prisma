@@ -1,0 +1,141 @@
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+enum AccountType {
+  ANONYMOUS
+  REGISTERED
+}
+
+enum LetterVisibility {
+  PRIVATE
+  PUBLIC
+}
+
+enum EntryType {
+  LETTER
+  NOTE
+}
+
+enum ReportStatus {
+  PENDING
+  REVIEWED
+  DISMISSED
+  REMOVED
+}
+
+model User {
+  id              String       @id @default(uuid()) @db.Uuid
+  unsentId        String       @unique @map("unsent_id") @db.VarChar(64)
+  accountType     AccountType  @default(ANONYMOUS) @map("account_type")
+  recoveryKeyHash String       @map("recovery_key_hash") @db.VarChar(255)
+  phone           String?      @unique @db.VarChar(20)
+  passwordHash    String?      @map("password_hash") @db.VarChar(255)
+  phoneVerifiedAt DateTime?    @map("phone_verified_at")
+  createdAt       DateTime     @default(now()) @map("created_at")
+  updatedAt       DateTime     @updatedAt @map("updated_at")
+
+  letters       Letter[]
+  savedLetters  SavedLetter[]
+  notifications Notification[]
+  reports       Report[]       @relation("ReportAuthor")
+  sessions      Session[]
+
+  @@map("users")
+}
+
+model Session {
+  id        String   @id @default(uuid()) @db.Uuid
+  userId    String   @map("user_id") @db.Uuid
+  tokenHash String   @unique @map("token_hash") @db.VarChar(255)
+  ipHash    String?  @map("ip_hash") @db.VarChar(64)
+  userAgent String?  @map("user_agent") @db.VarChar(512)
+  expiresAt DateTime @map("expires_at")
+  createdAt DateTime @default(now()) @map("created_at")
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([tokenHash])
+  @@index([userId])
+  @@map("sessions")
+}
+
+model Letter {
+  id               String           @id @default(uuid()) @db.Uuid
+  authorId         String?          @map("author_id") @db.Uuid
+  entryType        EntryType        @default(LETTER) @map("entry_type")
+  visibility       LetterVisibility @default(PRIVATE)
+  isAnonymous      Boolean          @default(true) @map("is_anonymous")
+  title            String?          @db.VarChar(200)
+  recipientName    String?          @map("recipient_name") @db.VarChar(100)
+  content          String           @db.Text
+  tags             String[]         @default([])
+  resonanceCount   Int              @default(0) @map("resonance_count")
+  isModerated      Boolean          @default(false) @map("is_moderated")
+  moderationReason String?          @map("moderation_reason") @db.VarChar(255)
+  parentLetterId   String?          @map("parent_letter_id") @db.Uuid
+  createdAt        DateTime         @default(now()) @map("created_at")
+  updatedAt        DateTime         @updatedAt @map("updated_at")
+
+  author       User?         @relation(fields: [authorId], references: [id], onDelete: SetNull)
+  parentLetter Letter?       @relation("LetterResponses", fields: [parentLetterId], references: [id], onDelete: SetNull)
+  responses    Letter[]      @relation("LetterResponses")
+  savedBy      SavedLetter[]
+  reports      Report[]
+
+  @@index([visibility, entryType, isModerated, createdAt(sort: Desc)])
+  @@index([authorId, entryType, createdAt(sort: Desc)])
+  @@index([parentLetterId])
+  @@map("letters")
+}
+
+model SavedLetter {
+  id          String   @id @default(uuid()) @db.Uuid
+  userId      String   @map("user_id") @db.Uuid
+  letterId    String   @map("letter_id") @db.Uuid
+  privateNote String?  @map("private_note") @db.Text
+  createdAt   DateTime @default(now()) @map("created_at")
+
+  user   User   @relation(fields: [userId], references: [id], onDelete: Cascade)
+  letter Letter @relation(fields: [letterId], references: [id], onDelete: Cascade)
+
+  @@unique([userId, letterId])
+  @@index([userId])
+  @@map("saved_letters")
+}
+
+model Notification {
+  id        String   @id @default(uuid()) @db.Uuid
+  userId    String   @map("user_id") @db.Uuid
+  type      String   @db.VarChar(50)
+  letterId  String?  @map("letter_id") @db.Uuid
+  payload   Json?
+  isRead    Boolean  @default(false) @map("is_read")
+  createdAt DateTime @default(now()) @map("created_at")
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId, isRead, createdAt(sort: Desc)])
+  @@map("notifications")
+}
+
+model Report {
+  id         String       @id @default(uuid()) @db.Uuid
+  reporterId String?      @map("reporter_id") @db.Uuid
+  letterId   String       @map("letter_id") @db.Uuid
+  reason     String       @db.VarChar(100)
+  details    String?      @db.VarChar(500)
+  status     ReportStatus @default(PENDING)
+  createdAt  DateTime     @default(now()) @map("created_at")
+
+  reporter User?  @relation("ReportAuthor", fields: [reporterId], references: [id], onDelete: SetNull)
+  letter   Letter @relation(fields: [letterId], references: [id], onDelete: Cascade)
+
+  @@index([letterId, status])
+  @@map("reports")
+}
