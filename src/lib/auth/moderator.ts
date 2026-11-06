@@ -1,4 +1,5 @@
 import { headers } from "next/headers";
+import crypto from "crypto";
 import { getCurrentSession } from "./session";
 import type { AuthenticatedUser } from "@/types/domain";
 
@@ -7,6 +8,27 @@ export interface ModeratorAuthResult {
   user?: AuthenticatedUser;
   error?: string;
   statusCode?: number;
+}
+
+/**
+ * Constant-time string comparison to prevent timing side-channel attacks on secret tokens.
+ */
+function safeCompareTokens(provided: string | null | undefined, expected: string): boolean {
+  if (!provided || typeof provided !== "string") return false;
+  const providedTrimmed = provided.trim();
+  const expectedTrimmed = expected.trim();
+  if (providedTrimmed.length === 0 || expectedTrimmed.length === 0) return false;
+
+  const providedBuf = Buffer.from(providedTrimmed, "utf-8");
+  const expectedBuf = Buffer.from(expectedTrimmed, "utf-8");
+
+  if (providedBuf.length !== expectedBuf.length) {
+    // Constant time dummy compare to prevent short-circuit timing differences
+    crypto.timingSafeEqual(expectedBuf, expectedBuf);
+    return false;
+  }
+
+  return crypto.timingSafeEqual(providedBuf, expectedBuf);
 }
 
 /**
@@ -26,7 +48,7 @@ export async function verifyModerator(): Promise<ModeratorAuthResult> {
   // 1. Programmatic token authentication (for automated testing or admin scripts)
   const configuredToken = process.env.MODERATOR_TOKEN;
   if (configuredToken && configuredToken.trim().length > 0) {
-    if (modTokenHeader === configuredToken.trim()) {
+    if (safeCompareTokens(modTokenHeader, configuredToken)) {
       return {
         authorized: true,
         user: {
@@ -41,7 +63,7 @@ export async function verifyModerator(): Promise<ModeratorAuthResult> {
 
     if (authHeader && authHeader.startsWith("Bearer ")) {
       const bearer = authHeader.slice(7).trim();
-      if (bearer === configuredToken.trim()) {
+      if (safeCompareTokens(bearer, configuredToken)) {
         return {
           authorized: true,
           user: {

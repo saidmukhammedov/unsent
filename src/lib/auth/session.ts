@@ -314,7 +314,11 @@ export async function deleteAccountAndData(userId: string): Promise<void> {
     where: { id: userId },
   });
 
-  // 9. Clear session cookie
-  const cookieStore = await cookies();
-  cookieStore.delete(SESSION_COOKIE_NAME);
+  // 9. Clear session cookie if called within request scope
+  try {
+    const cookieStore = await cookies();
+    cookieStore.delete(SESSION_COOKIE_NAME);
+  } catch {
+    // Outside request scope (e.g. CLI, scripts, testing)
+  }
 }

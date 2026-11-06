@@ -47,19 +47,22 @@ export async function notifyAuthorOfResponse(params: {
   }
 
   // Prevent duplicate notifications for this specific response
-  const existing = await db.notification.findFirst({
+  const existingNotifications = await db.notification.findMany({
     where: {
       userId: letter.authorId,
       letterId: originalLetterId,
       type: "RESPONSE_RECEIVED",
     },
+    select: { payload: true },
   });
 
-  if (existing && existing.payload) {
-    const payload = existing.payload as unknown as ResponseNotificationPayload;
-    if (payload?.responseId === responseId) {
-      return false; // Already notified for this exact response
-    }
+  const alreadyNotified = existingNotifications.some((n) => {
+    const payload = n.payload as unknown as ResponseNotificationPayload | null;
+    return payload?.responseId === responseId;
+  });
+
+  if (alreadyNotified) {
+    return false; // Already notified for this exact response
   }
 
   const payload: ResponseNotificationPayload = {
