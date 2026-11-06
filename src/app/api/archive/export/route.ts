@@ -28,7 +28,7 @@ export async function GET(req: NextRequest) {
     const { user } = await ensureSession();
 
     // Sensitive operation rate limiting
-    const rateCheck = checkRateLimit(`export:${user.id}`, 10, 60_000);
+    const rateCheck = await checkRateLimit(`export:${user.id}`, 10, 60_000);
     if (!rateCheck.allowed) {
       return NextResponse.json(
         {

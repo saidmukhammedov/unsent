@@ -1,9 +1,27 @@
 import { NextRequest, NextResponse } from "next/server";
 import { restoreSessionWithRecoveryKey } from "@/lib/auth/session";
 import { recoveryKeySchema } from "@/lib/validation/auth";
+import { checkRateLimit } from "@/lib/rate-limit";
 
 export async function POST(req: NextRequest) {
   try {
+    const clientIp = req.headers.get("x-forwarded-for")?.split(",")[0]?.trim() || "127.0.0.1";
+
+    // Rate limiting: 5 recovery attempts per minute per IP
+    const ipLimit = await checkRateLimit(`recover:ip:${clientIp}`, 5, 60_000);
+    if (!ipLimit.allowed) {
+      return NextResponse.json(
+        {
+          success: false,
+          error: {
+            code: "RATE_LIMITED",
+            message: "Too many recovery attempts. Please wait a moment before trying again.",
+          },
+        },
+        { status: 429 }
+      );
+    }
+
     const body = await req.json();
     const parsed = recoveryKeySchema.safeParse(body);
 

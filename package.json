@@ -7,7 +7,7 @@
     "build": "next build",
     "start": "next start",
     "lint": "eslint",
-    "test": "tsx scripts/verify-milestone2.ts && tsx scripts/verify-milestone3.ts && tsx scripts/verify-milestone4.ts && tsx scripts/verify-milestone5.ts && tsx scripts/verify-milestone6.ts && tsx scripts/verify-milestone7.ts && tsx scripts/verify-milestone8.ts && tsx scripts/verify-milestone9.ts && tsx scripts/verify-http-integration.ts",
+    "test": "tsx scripts/verify-milestone2.ts && tsx scripts/verify-milestone3.ts && tsx scripts/verify-milestone4.ts && tsx scripts/verify-milestone5.ts && tsx scripts/verify-milestone6.ts && tsx scripts/verify-milestone7.ts && tsx scripts/verify-milestone8.ts && tsx scripts/verify-milestone9.ts && tsx scripts/verify-http-integration.ts && tsx scripts/test-infra-verification.ts",
     "test:m3": "tsx scripts/verify-milestone3.ts",
     "test:m4": "tsx scripts/verify-milestone4.ts",
     "test:m5": "tsx scripts/verify-milestone5.ts",
@@ -16,10 +16,13 @@
     "test:m8": "tsx scripts/verify-milestone8.ts",
     "test:m9": "tsx scripts/verify-milestone9.ts",
     "test:http": "tsx scripts/verify-http-integration.ts",
+    "test:infra": "tsx scripts/test-infra-verification.ts",
     "db:generate": "prisma generate"
   },
   "dependencies": {
     "@prisma/client": "6.19.3",
+    "@upstash/ratelimit": "^2.2.0",
+    "@upstash/redis": "^1.41.0",
     "argon2": "^0.45.2",
     "lucide-react": "^1.68.0",
     "next": "16.4.5",

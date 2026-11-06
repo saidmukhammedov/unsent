@@ -3,6 +3,7 @@ import { ensureSession } from "@/lib/auth/session";
 import { db } from "@/lib/db";
 import { letterCreateSchema, personalNoteSchema } from "@/lib/validation/letters";
 import { evaluateSafety } from "@/lib/safety/gate";
+import { checkRateLimit } from "@/lib/rate-limit";
 
 export async function GET(req: NextRequest) {
   try {
@@ -135,6 +136,20 @@ export async function POST(req: NextRequest) {
 
     // 2. Public Publishing Safety Gate
     if (effectiveVisibility === "PUBLIC") {
+      const rateLimit = await checkRateLimit(`submit:public:${user.id}`, 10, 60_000);
+      if (!rateLimit.allowed) {
+        return NextResponse.json(
+          {
+            success: false,
+            error: {
+              code: "RATE_LIMITED",
+              message: "Too many public submissions. Please wait a moment before releasing another letter.",
+            },
+          },
+          { status: 429 }
+        );
+      }
+
       const safetyResult = evaluateSafety(content, recipientName, title);
 
       if (safetyResult.action === "BLOCK") {

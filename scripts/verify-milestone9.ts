@@ -997,7 +997,7 @@ async function runMilestone9Tests() {
     let blockedCount = 0;
 
     for (let i = 0; i < 8; i++) {
-      const res = checkRateLimit(rateKey, limit, 60_000);
+      const res = await checkRateLimit(rateKey, limit, 60_000);
       if (res.allowed) allowedCount++;
       else blockedCount++;
     }

@@ -13,7 +13,7 @@ export async function POST(req: NextRequest) {
     const clientIp = req.headers.get("x-forwarded-for")?.split(",")[0]?.trim() || "127.0.0.1";
 
     // Rate limiting: 5 registration attempts per minute per IP
-    const ipLimit = checkRateLimit(`reg:ip:${clientIp}`, 5, 60_000);
+    const ipLimit = await checkRateLimit(`reg:ip:${clientIp}`, 5, 60_000);
     if (!ipLimit.allowed) {
       return NextResponse.json(
         {

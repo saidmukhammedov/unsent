@@ -4,6 +4,7 @@ import { db } from "@/lib/db";
 import { responseCreateSchema } from "@/lib/validation/responses";
 import { evaluateSafety } from "@/lib/safety/gate";
 import { notifyAuthorOfResponse } from "@/lib/notifications/service";
+import { checkRateLimit } from "@/lib/rate-limit";
 
 interface RouteContext {
   params: Promise<{ id: string }>;
@@ -124,6 +125,21 @@ export async function POST(req: NextRequest, context: RouteContext) {
     }
 
     const { content } = parsed.data;
+
+    // Distributed Rate-Limiting: 10 responses per minute per identity
+    const rlCheck = await checkRateLimit(`resp:user:${user.id}`, 10, 60_000);
+    if (!rlCheck.allowed) {
+      return NextResponse.json(
+        {
+          success: false,
+          error: {
+            code: "RATE_LIMITED",
+            message: "Too many responses sent. Please take a quiet breath before responding again.",
+          },
+        },
+        { status: 429 }
+      );
+    }
 
     // Rate-limiting / anti-spam: check for recent identical response by this user
     const recentDuplicate = await db.letter.findFirst({

@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { ensureSession } from "@/lib/auth/session";
 import { db } from "@/lib/db";
 import { reportCreateSchema } from "@/lib/validation/reports";
+import { checkRateLimit } from "@/lib/rate-limit";
 
 interface RouteContext {
   params: Promise<{ id: string }>;
@@ -51,6 +52,21 @@ export async function POST(req: NextRequest, context: RouteContext) {
           },
         },
         { status: 400 }
+      );
+    }
+
+    // Rate limiting: 10 reports per minute per identity
+    const rlCheck = await checkRateLimit(`report:user:${user.id}`, 10, 60_000);
+    if (!rlCheck.allowed) {
+      return NextResponse.json(
+        {
+          success: false,
+          error: {
+            code: "RATE_LIMITED",
+            message: "Too many reports submitted. Please wait before reporting another letter.",
+          },
+        },
+        { status: 429 }
       );
     }
 

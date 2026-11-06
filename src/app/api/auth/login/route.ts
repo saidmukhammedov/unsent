@@ -15,7 +15,7 @@ export async function POST(req: NextRequest) {
     const clientIp = req.headers.get("x-forwarded-for")?.split(",")[0]?.trim() || "127.0.0.1";
 
     // Rate limiting: 5 attempts per 60 seconds per IP
-    const ipLimit = checkRateLimit(`login:ip:${clientIp}`, 5, 60_000);
+    const ipLimit = await checkRateLimit(`login:ip:${clientIp}`, 5, 60_000);
     if (!ipLimit.allowed) {
       return NextResponse.json(
         {
@@ -60,7 +60,7 @@ export async function POST(req: NextRequest) {
     }
 
     // Rate limiting per phone number: 5 attempts per 60 seconds
-    const phoneLimit = checkRateLimit(`login:phone:${normalizedPhone}`, 5, 60_000);
+    const phoneLimit = await checkRateLimit(`login:phone:${normalizedPhone}`, 5, 60_000);
     if (!phoneLimit.allowed) {
       return NextResponse.json(
         {
