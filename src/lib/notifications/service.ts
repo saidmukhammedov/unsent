@@ -46,22 +46,16 @@ export async function notifyAuthorOfResponse(params: {
     return false;
   }
 
-  // Prevent duplicate notifications for this specific response
-  const existingNotifications = await db.notification.findMany({
-    where: {
-      userId: letter.authorId,
-      letterId: originalLetterId,
-      type: "RESPONSE_RECEIVED",
-    },
-    select: { payload: true },
+  // Database-enforced idempotency key prevents duplicate notifications even under concurrent execution
+  const idempotencyKey = `resp_notif:${originalLetterId}:${responseId}`;
+
+  // 1. Fast preliminary check via unique idempotency key
+  const existing = await db.notification.findUnique({
+    where: { idempotencyKey },
+    select: { id: true },
   });
 
-  const alreadyNotified = existingNotifications.some((n) => {
-    const payload = n.payload as unknown as ResponseNotificationPayload | null;
-    return payload?.responseId === responseId;
-  });
-
-  if (alreadyNotified) {
+  if (existing) {
     return false; // Already notified for this exact response
   }
 
@@ -73,17 +67,31 @@ export async function notifyAuthorOfResponse(params: {
     createdAt: new Date().toISOString(),
   };
 
-  await db.notification.create({
-    data: {
-      userId: letter.authorId,
-      letterId: originalLetterId,
-      type: "RESPONSE_RECEIVED",
-      payload: payload as unknown as Prisma.InputJsonValue,
-      isRead: false,
-    },
-  });
-
-  return true;
+  // 2. Database-enforced atomic creation with unique constraint idempotency (P2002 guard)
+  try {
+    await db.notification.create({
+      data: {
+        userId: letter.authorId,
+        letterId: originalLetterId,
+        type: "RESPONSE_RECEIVED",
+        idempotencyKey,
+        payload: payload as unknown as Prisma.InputJsonValue,
+        isRead: false,
+      },
+    });
+    return true;
+  } catch (err: unknown) {
+    if (
+      typeof err === "object" &&
+      err !== null &&
+      "code" in err &&
+      (err as { code: string }).code === "P2002"
+    ) {
+      // Race condition safely mitigated: parallel request already created this notification!
+      return false;
+    }
+    throw err;
+  }
 }
 
 /**

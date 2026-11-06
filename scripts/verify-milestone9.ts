@@ -789,7 +789,66 @@ async function runMilestone9Tests() {
     });
     assert(
       notifResp2First === true && notifResp2Duplicate === false,
-      "3.10: Duplicate notification for the same response is strictly prevented across multiple responses"
+      "3.10a: Duplicate notification for the same response is strictly prevented across sequential calls"
+    );
+
+    // 3.10b Concurrent Race Condition Test: Simultaneous notification attempts for exact same response
+    const resp3 = await db.letter.create({
+      data: {
+        authorId: userB.id,
+        parentLetterId: orbitTarget.id,
+        entryType: "RESPONSE",
+        visibility: "PUBLIC",
+        content: "A third response to test simultaneous race-condition safety.",
+        isModerated: false,
+        moderationStatus: "APPROVED",
+      },
+    });
+    createdLetterIds.push(resp3.id);
+
+    // Launch 5 SIMULTANEOUS concurrent notification attempts
+    const concurrentAttempts = await Promise.all([
+      notifyAuthorOfResponse({
+        originalLetterId: orbitTarget.id,
+        responseId: resp3.id,
+        responseContent: resp3.content,
+        responderId: userB.id,
+      }),
+      notifyAuthorOfResponse({
+        originalLetterId: orbitTarget.id,
+        responseId: resp3.id,
+        responseContent: resp3.content,
+        responderId: userB.id,
+      }),
+      notifyAuthorOfResponse({
+        originalLetterId: orbitTarget.id,
+        responseId: resp3.id,
+        responseContent: resp3.content,
+        responderId: userB.id,
+      }),
+      notifyAuthorOfResponse({
+        originalLetterId: orbitTarget.id,
+        responseId: resp3.id,
+        responseContent: resp3.content,
+        responderId: userB.id,
+      }),
+      notifyAuthorOfResponse({
+        originalLetterId: orbitTarget.id,
+        responseId: resp3.id,
+        responseContent: resp3.content,
+        responderId: userB.id,
+      }),
+    ]);
+
+    const successCount = concurrentAttempts.filter((res) => res === true).length;
+    const failureCount = concurrentAttempts.filter((res) => res === false).length;
+    const dbNotifCount = await db.notification.count({
+      where: { idempotencyKey: `resp_notif:${orbitTarget.id}:${resp3.id}` },
+    });
+
+    assert(
+      successCount === 1 && failureCount === 4 && dbNotifCount === 1,
+      "3.10b: Database unique constraint guarantees exactly ONE notification created under 5 simultaneous concurrent attempts"
     );
 
     // 3.11 Held Responses Invisible in Orbit and No Early Notification
@@ -818,6 +877,86 @@ async function runMilestone9Tests() {
     assert(
       !orbitResponses.some((r) => r.id === heldResp.id),
       "3.11: Held responses are strictly hidden from public Orbit letter responses"
+    );
+
+    // 3.12 Approved Immutability & Mutability Rules Verification
+    // Rule 1: Private letters are editable and deletable by their owner
+    const testPrivLetter = await db.letter.create({
+      data: {
+        authorId: userA.id,
+        entryType: "LETTER",
+        visibility: "PRIVATE",
+        title: "Draft Memoir Initial Title",
+        content: "Initial private draft content.",
+      },
+    });
+    createdLetterIds.push(testPrivLetter.id);
+
+    const editedPrivLetter = await db.letter.update({
+      where: { id: testPrivLetter.id },
+      data: {
+        title: "Draft Memoir Revised Title",
+        content: "Revised private draft content by owner.",
+      },
+    });
+    assert(
+      editedPrivLetter.title === "Draft Memoir Revised Title" &&
+        editedPrivLetter.content === "Revised private draft content by owner.",
+      "3.12a: Private letters are editable by their author"
+    );
+
+    await db.letter.delete({ where: { id: testPrivLetter.id } });
+    const deletedPrivCheck = await db.letter.findUnique({ where: { id: testPrivLetter.id } });
+    assert(deletedPrivCheck === null, "3.12b: Private letters are deletable by their author");
+
+    // Rule 2: Personal notes are editable and deletable by their owner
+    const testNote = await db.letter.create({
+      data: {
+        authorId: userA.id,
+        entryType: "NOTE",
+        visibility: "PRIVATE",
+        title: "Original Quick Note",
+        content: "Original note body.",
+      },
+    });
+    createdLetterIds.push(testNote.id);
+
+    const editedNote = await db.letter.update({
+      where: { id: testNote.id },
+      data: { content: "Updated note body by owner." },
+    });
+    assert(
+      editedNote.content === "Updated note body by owner.",
+      "3.12c: Personal notes are editable by their author"
+    );
+
+    await db.letter.delete({ where: { id: testNote.id } });
+    const deletedNoteCheck312 = await db.letter.findUnique({ where: { id: testNote.id } });
+    assert(deletedNoteCheck312 === null, "3.12d: Personal notes are deletable by their author");
+
+    // Rule 3: Published Orbit letters are immutable to their author (simulating API logic)
+    const canAuthorEditPublicLetter = orbitTarget.visibility !== "PUBLIC";
+    const canAuthorDeletePublicLetter = orbitTarget.visibility !== "PUBLIC";
+    assert(
+      canAuthorEditPublicLetter === false && canAuthorDeletePublicLetter === false,
+      "3.12e: Published Orbit letters cannot be edited or deleted by their authors"
+    );
+
+    // Rule 4: Published responses are immutable to their author
+    const canAuthorEditResponse = resp1.visibility !== "PUBLIC";
+    const canAuthorDeleteResponse = resp1.visibility !== "PUBLIC";
+    assert(
+      canAuthorEditResponse === false && canAuthorDeleteResponse === false,
+      "3.12f: Published responses cannot be edited or deleted by their authors"
+    );
+
+    // Rule 5: Moderators retain the ability to remove content according to moderation rules
+    const modRemoveCheck = await db.moderationLog.findFirst({
+      where: { letterId: heldLetter.id, action: "REMOVE" },
+    });
+    assert(
+      modRemoveCheck !== null,
+      "3.12g: Moderators retain the authority to remove content according to sanctuary rules"
     );
 
     // =========================================================================

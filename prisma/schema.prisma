@@ -127,13 +127,14 @@ model SavedLetter {
 }
 
 model Notification {
-  id        String   @id @default(uuid()) @db.Uuid
-  userId    String   @map("user_id") @db.Uuid
-  type      String   @db.VarChar(50)
-  letterId  String?  @map("letter_id") @db.Uuid
-  payload   Json?
-  isRead    Boolean  @default(false) @map("is_read")
-  createdAt DateTime @default(now()) @map("created_at")
+  id             String   @id @default(uuid()) @db.Uuid
+  userId         String   @map("user_id") @db.Uuid
+  type           String   @db.VarChar(50)
+  letterId       String?  @map("letter_id") @db.Uuid
+  idempotencyKey String?  @unique @map("idempotency_key") @db.VarChar(128)
+  payload        Json?
+  isRead         Boolean  @default(false) @map("is_read")
+  createdAt      DateTime @default(now()) @map("created_at")
 
   user User @relation(fields: [userId], references: [id], onDelete: Cascade)
 
