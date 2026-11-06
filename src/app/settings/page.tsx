@@ -822,11 +822,16 @@ export default function SettingsPage() {
 
       {/* Account Deletion Confirmation Modal */}
       {showDeleteModal && (
-        <div className="fixed inset-0 z-50 bg-[#23201D]/50 backdrop-blur-xs flex items-center justify-center p-4">
+        <div
+          className="fixed inset-0 z-50 bg-[#23201D]/50 backdrop-blur-xs flex items-center justify-center p-4"
+          role="dialog"
+          aria-modal="true"
+          aria-labelledby="delete-account-title"
+        >
           <div className="bg-[#FBF9F5] border border-[#F0D5D5] rounded-sm p-6 sm:p-8 max-w-lg w-full shadow-xl space-y-4">
             <div className="flex items-center gap-2 text-[#9E4747]">
               <AlertTriangle className="w-5 h-5 shrink-0" />
-              <h3 className="font-serif text-lg text-[#9E4747]">
+              <h3 id="delete-account-title" className="font-serif text-lg text-[#9E4747]">
                 Permanent Sanctuary Deletion
               </h3>
             </div>

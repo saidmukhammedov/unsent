@@ -1,3 +1,5 @@
+import Link from "next/link";
+
 interface LetterPreviewCardProps {
   recipient: string;
   excerpt: string;
@@ -36,9 +38,13 @@ export function LetterPreviewCard({
         ) : (
           <span />
         )}
-        <span className="font-serif italic text-[#C27D77] group-hover:translate-x-0.5 transition-transform">
-          read letter →
-        </span>
+        <Link
+          href="/orbit"
+          className="font-serif italic text-[#C27D77] hover:text-[#AB6863] group-hover:translate-x-0.5 transition-transform inline-flex items-center gap-1"
+        >
+          <span>read letter</span>
+          <span>→</span>
+        </Link>
       </div>
     </article>
   );

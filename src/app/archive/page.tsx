@@ -601,9 +601,14 @@ export default function ArchivePage() {
 
       {/* Confirmation Modal */}
       {confirmModal && (
-        <div className="fixed inset-0 z-50 bg-[#23201D]/40 backdrop-blur-xs flex items-center justify-center p-4">
+        <div
+          className="fixed inset-0 z-50 bg-[#23201D]/40 backdrop-blur-xs flex items-center justify-center p-4"
+          role="dialog"
+          aria-modal="true"
+          aria-labelledby="archive-confirm-title"
+        >
           <div className="bg-[#FBF9F5] border border-[#E8E2D7] rounded-sm p-6 max-w-md w-full shadow-lg">
-            <h3 className="font-serif text-lg text-[#23201D]">{confirmModal.title}</h3>
+            <h3 id="archive-confirm-title" className="font-serif text-lg text-[#23201D]">{confirmModal.title}</h3>
             <p className="mt-2 text-xs sm:text-sm text-[#57524C] leading-relaxed">
               {confirmModal.description}
             </p>

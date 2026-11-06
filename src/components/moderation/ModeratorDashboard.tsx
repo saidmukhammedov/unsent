@@ -382,9 +382,14 @@ export function ModeratorDashboard() {
 
       {/* Action Confirmation Modal */}
       {actionItem && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-[#23201D]/40 backdrop-blur-xs animate-fade-in">
+        <div
+          className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-[#23201D]/40 backdrop-blur-xs animate-fade-in"
+          role="dialog"
+          aria-modal="true"
+          aria-labelledby="steward-action-title"
+        >
           <div className="w-full max-w-md bg-[#FBF9F5] border border-[#E8E2D7] p-6 rounded-sm shadow-xl space-y-4">
-            <h3 className="font-serif text-lg text-[#23201D] font-medium">
+            <h3 id="steward-action-title" className="font-serif text-lg text-[#23201D] font-medium">
               Confirm Action: {actionItem.action}
             </h3>
 

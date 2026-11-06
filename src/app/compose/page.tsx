@@ -293,11 +293,16 @@ export default function ComposePage() {
 
       {/* Public Letter Release Confirmation Dialog */}
       {showPublicConfirm && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-[#23201D]/45 backdrop-blur-xs animate-in fade-in">
+        <div
+          className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-[#23201D]/45 backdrop-blur-xs animate-in fade-in"
+          role="dialog"
+          aria-modal="true"
+          aria-labelledby="public-confirm-title"
+        >
           <div className="w-full max-w-md bg-[#FBF9F5] border border-[#E8E2D7] rounded-sm p-7 shadow-2xl">
             <div className="flex items-center gap-2.5 text-[#C27D77] mb-3">
               <Globe className="w-5 h-5 stroke-[1.5]" />
-              <span className="font-serif italic text-base text-[#23201D]">
+              <span id="public-confirm-title" className="font-serif italic text-base text-[#23201D]">
                 Releasing into Orbit
               </span>
             </div>

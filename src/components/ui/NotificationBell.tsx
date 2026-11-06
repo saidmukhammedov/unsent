@@ -112,7 +112,7 @@ export function NotificationBell() {
 
       {/* Notifications Drawer / Dropdown */}
       {isOpen && (
-        <div className="absolute right-0 mt-2 w-80 sm:w-96 bg-[#FBF9F5] border border-[#E8E2D7] rounded-sm shadow-[0_8px_30px_rgba(35,32,29,0.08)] z-50 animate-fade-in overflow-hidden">
+        <div className="absolute right-0 mt-2 w-[calc(100vw-2rem)] max-w-sm sm:w-96 bg-[#FBF9F5] border border-[#E8E2D7] rounded-sm shadow-[0_8px_30px_rgba(35,32,29,0.08)] z-50 animate-fade-in overflow-hidden">
           {/* Header */}
           <div className="px-4 py-3 border-b border-[#E8E2D7]/70 flex items-center justify-between bg-[#F5F2EB]/50">
             <div className="flex items-center gap-1.5">

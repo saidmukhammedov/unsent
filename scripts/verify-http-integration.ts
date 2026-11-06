@@ -506,30 +506,202 @@ async function runHttpIntegrationTests() {
     }
 
     // =========================================================================
-    // FLOW 8: ACCOUNT DELETION & ORPHANING OVER HTTP
+    // FLOW 8: ORBIT DISCOVERY, READING & SAVING OVER HTTP
     // =========================================================================
-    console.log("\n--- Flow 8: Account Deletion & Orphaning over HTTP ---");
+    console.log("\n--- Flow 8: Orbit Discovery, Reading & Saving over HTTP ---");
+
+    // Client B queries Orbit latest feed
+    const orbitLatest = await clientB.get<{
+      success: boolean;
+      data: { items: Array<{ id: string; title: string }>; total: number };
+    }>("/api/orbit?mode=latest");
+    assert(
+      orbitLatest.status === 200 && orbitLatest.data?.data?.items?.some((i) => i.id === orbitIdA),
+      "8.1: GET /api/orbit?mode=latest successfully returns published Orbit letter"
+    );
+
+    // Client B queries Orbit discover mode (anthology)
+    const orbitDiscover = await clientB.get<{ success: boolean }>("/api/orbit?mode=discover");
+    assert(orbitDiscover.status === 200, "8.2: GET /api/orbit?mode=discover returns anthology feed");
+
+    // Client B reads specific letter detail
+    const letterDetail = await clientB.get<{
+      success: boolean;
+      data: { id: string; isSaved: boolean; content: string };
+    }>(`/api/orbit/${orbitIdA}`);
+    assert(
+      letterDetail.status === 200 && letterDetail.data?.data?.isSaved === false,
+      "8.3: GET /api/orbit/[id] loads letter detail with isSaved=false"
+    );
+
+    // Client B saves the letter to their collection
+    const saveRes = await clientB.post<{ success: boolean }>(`/api/orbit/${orbitIdA}/save`);
+    assert(saveRes.status === 200, "8.4: POST /api/orbit/[id]/save saves letter to collection");
+
+    // Re-check detail reports isSaved=true
+    const detailAfterSave = await clientB.get<{
+      success: boolean;
+      data: { isSaved: boolean };
+    }>(`/api/orbit/${orbitIdA}`);
+    assert(detailAfterSave.data?.data?.isSaved === true, "8.5: Letter detail now reflects isSaved=true");
+
+    // Client B checks their personal archive contains the saved letter
+    const archiveSaved = await clientB.get<{
+      success: boolean;
+      data: { counts: { savedLetters: number } };
+    }>("/api/archive");
+    assert(
+      archiveSaved.status === 200 && (archiveSaved.data?.data?.counts?.savedLetters ?? 0) >= 1,
+      "8.6: GET /api/archive lists saved letter in recipient's sanctuary collection"
+    );
+
+    // Client B unsaves the letter
+    const unsaveRes = await clientB.delete<{ success: boolean }>(`/api/orbit/${orbitIdA}/save`);
+    assert(unsaveRes.status === 200, "8.7: DELETE /api/orbit/[id]/save removes letter from collection");
+
+    // =========================================================================
+    // FLOW 9: PERSONAL ARCHIVE RETRIEVAL & JSON EXPORT OVER HTTP
+    // =========================================================================
+    console.log("\n--- Flow 9: Personal Archive Retrieval & JSON Export over HTTP ---");
+
+    const archiveRes = await clientA_device2.get<{
+      success: boolean;
+      data: { counts: { letters: number; responses: number } };
+    }>("/api/archive");
+    assert(
+      archiveRes.status === 200 && (archiveRes.data?.data?.counts?.letters ?? 0) >= 1,
+      "9.1: GET /api/archive returns author's complete archive statistics"
+    );
+
+    const exportRes = await clientA_device2.get<{
+      exportedAt: string;
+      identity: { unsentId: string; accountType: string };
+      myLetters: Array<{ id: string }>;
+    }>("/api/archive/export?format=json");
+    assert(
+      exportRes.status === 200 &&
+        exportRes.headers.get("content-disposition")?.includes("attachment;") === true &&
+        exportRes.data?.identity?.unsentId !== undefined,
+      "9.2: GET /api/archive/export?format=json exports complete data archive with valid JSON attachment header"
+    );
+
+    // =========================================================================
+    // FLOW 10: COMMUNITY REPORTING & STEWARD ACTION OVER HTTP
+    // =========================================================================
+    console.log("\n--- Flow 10: Community Reporting & Steward Action over HTTP ---");
+
+    // Client B reports Client A's Orbit letter
+    const reportRes = await clientB.post<{ success: boolean; data?: { id: string } }>(
+      `/api/orbit/${orbitIdA}/report`,
+      {
+        reason: "PERSONAL_INFO",
+        details: "Integration test reporting check",
+      }
+    );
+    assert(reportRes.status === 200, "10.1: POST /api/orbit/[id]/report successfully records community report");
+
+    // Steward views reported letters
+    const stewardQueue = await unauthClient.get<{
+      success: boolean;
+      data: { items: Array<{ id: string }> };
+    }>("/api/moderation/letters?filter=reported", {
+      "x-moderator-token": MOD_TOKEN,
+    });
+    assert(
+      stewardQueue.status === 200 && stewardQueue.data?.data?.items?.some((i) => i.id === orbitIdA),
+      "10.2: Steward views reported queue and finds the flagged letter"
+    );
+
+    // Steward acts: dismiss reports
+    const stewardAction = await unauthClient.post<{ success: boolean }>(
+      `/api/moderation/letters/${orbitIdA}/action`,
+      {
+        action: "DISMISS_REPORTS",
+        reason: "Integration test: steward reviewed and found compliant.",
+      },
+      { "x-moderator-token": MOD_TOKEN }
+    );
+    assert(
+      stewardAction.status === 200,
+      "10.3: Steward POST /api/moderation/letters/[id]/action DISMISS_REPORTS succeeds"
+    );
+
+    // =========================================================================
+    // FLOW 11: CRYPTOGRAPHIC IDENTITY RESTORATION VIA RECOVERY KEY OVER HTTP
+    // =========================================================================
+    console.log("\n--- Flow 11: Cryptographic Identity Restoration via Recovery Key over HTTP ---");
+
+    const clientC = new HttpClient("Client C");
+    const meC = await clientC.get<{
+      success: boolean;
+      data: { unsentId: string; newRecoveryKey?: string };
+    }>("/api/auth/me");
+    assert(
+      meC.status === 200 && typeof meC.data?.data?.newRecoveryKey === "string",
+      "11.1: Client C visits /api/auth/me and receives plaintext recovery key once"
+    );
+    const keyC = meC.data!.data.newRecoveryKey!;
+    const unsentIdC = meC.data!.data.unsentId;
+
+    // Client C writes a private letter
+    const letterC = await clientC.post<{ success: boolean; data: { id: string } }>("/api/letters", {
+      title: "Client C Sanctuary Letter",
+      content: "This letter belongs to Client C and should survive recovery on another device.",
+      visibility: "PRIVATE",
+      entryType: "LETTER",
+    });
+    const letterIdC = letterC.data?.data?.id;
+    if (letterIdC) cleanupLetterIds.push(letterIdC);
+    assert(letterC.status === 201 && !!letterIdC, "11.2: Client C saves a private letter");
+
+    // Client C (New Device / Cleared Cookies)
+    const clientC_newDevice = new HttpClient("Client C (New Device)");
+    const recoverRes = await clientC_newDevice.post<{
+      success: boolean;
+      data: { unsentId: string };
+    }>("/api/auth/recover", {
+      recoveryKey: keyC,
+    });
+    assert(
+      recoverRes.status === 200 && recoverRes.data?.data?.unsentId === unsentIdC,
+      "11.3: POST /api/auth/recover successfully restores Client C's identity on a fresh device"
+    );
+
+    // Restored client verifies access to their private letter
+    const restoredLetterCheck = await clientC_newDevice.get<{
+      success: boolean;
+      data: { id: string; title: string };
+    }>(`/api/letters/${letterIdC}`);
+    assert(
+      restoredLetterCheck.status === 200 && restoredLetterCheck.data?.data?.id === letterIdC,
+      "11.4: Restored session immediately grants access to Client C's private letter"
+    );
+
+    // =========================================================================
+    // FLOW 12: ACCOUNT DELETION & ORPHANING OVER HTTP
+    // =========================================================================
+    console.log("\n--- Flow 12: Account Deletion & Orphaning over HTTP ---");
 
     const deleteAccRes = await clientA_device2.post<{ success: boolean }>("/api/auth/delete-account", {
       confirmPhrase: "ERASE MY SANCTUARY",
     });
-    assert(deleteAccRes.status === 200, "8.1: POST /api/auth/delete-account with confirmPhrase returns 200 OK");
+    assert(deleteAccRes.status === 200, "12.1: POST /api/auth/delete-account with confirmPhrase returns 200 OK");
 
     // Verify database state directly:
     // 1. Private letter must be permanently purged
     const checkDbPrivate = await db.letter.findUnique({ where: { id: letterIdA } });
-    assert(checkDbPrivate === null, "8.2: Author's private letters are permanently deleted from database");
+    assert(checkDbPrivate === null, "12.2: Author's private letters are permanently deleted from database");
 
     // 2. Published Orbit letter must be preserved with authorId = null
     const checkDbOrbit = await db.letter.findUnique({ where: { id: orbitIdA } });
     assert(
       checkDbOrbit !== null && checkDbOrbit.authorId === null && checkDbOrbit.visibility === "PUBLIC",
-      "8.3: Author's published Orbit letters remain preserved in Orbit with authorId severed (null)"
+      "12.3: Author's published Orbit letters remain preserved in Orbit with authorId severed (null)"
     );
 
     // 3. User record must be purged
     const checkDbUser = await db.user.findUnique({ where: { phone: testPhone } });
-    assert(checkDbUser === null, "8.4: User record is permanently erased from database");
+    assert(checkDbUser === null, "12.4: User record is permanently erased from database");
 
   } finally {
     console.log("\n--- Cleaning up test artifacts ---");

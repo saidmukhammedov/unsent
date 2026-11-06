@@ -16,6 +16,7 @@ export function ReportButton({ letterId, className = "" }: ReportButtonProps) {
       <button
         type="button"
         onClick={() => setIsOpen(true)}
+        aria-label="Report this letter"
         className={`inline-flex items-center gap-1.5 text-xs text-[#878077] hover:text-[#C27D77] transition-colors font-serif italic ${className}`}
         title="Report this letter if it exposes private or harmful content"
       >

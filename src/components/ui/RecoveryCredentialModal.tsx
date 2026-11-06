@@ -27,7 +27,12 @@ export function RecoveryCredentialModal({
   };
 
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-[#23201D]/40 backdrop-blur-xs animate-in fade-in duration-300">
+    <div
+      className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-[#23201D]/40 backdrop-blur-xs animate-in fade-in duration-300"
+      role="dialog"
+      aria-modal="true"
+      aria-labelledby="recovery-modal-title"
+    >
       <div className="w-full max-w-lg bg-[#FBF9F5] border border-[#E8E2D7] rounded-sm p-7 sm:p-9 shadow-2xl relative">
         <div className="flex items-center gap-3 mb-4 text-[#C27D77]">
           <KeyRound className="w-5 h-5 stroke-[1.5]" />
@@ -36,7 +41,7 @@ export function RecoveryCredentialModal({
           </span>
         </div>
 
-        <h2 className="font-serif text-2xl text-[#23201D] font-normal mb-3">
+        <h2 id="recovery-modal-title" className="font-serif text-2xl text-[#23201D] font-normal mb-3">
           Save your Recovery Credential
         </h2>
 
