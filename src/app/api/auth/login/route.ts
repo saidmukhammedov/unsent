@@ -8,7 +8,7 @@ import { checkRateLimit } from "@/lib/rate-limit";
 
 // Dummy hash to burn CPU cycles and prevent user enumeration timing attacks
 const DUMMY_ARGON2_HASH =
-  "$argon2id$v=19$m=65536,t=3,p=4$dGVzdHNhbHRmb3J0aW1pbmc$8Zk2O5H9U57i936V5Jc5+H0xU4l2sX7yY5yP+K1j6cE";
+  "$argon2id$v=19$m=65536,t=3,p=4$Ze+gFNB/Q0fYeUPDY3R0ZA$x1BdkEkjybxknal3nf4du+O0M/OqcDphqD83n+IdpBg";
 
 export async function POST(req: NextRequest) {
   try {

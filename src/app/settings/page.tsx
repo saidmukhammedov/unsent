@@ -428,11 +428,16 @@ export default function SettingsPage() {
                           </Link>
                         </div>
                       ) : (
-                        <div className="mt-4 p-3.5 rounded-sm bg-[#EBF3ED]/60 border border-[#D5E3D8] text-xs text-[#2B543A] flex items-center justify-between">
-                          <span>
-                            This sanctuary is registered with phone-number-and-password credentials.
-                          </span>
-                          <span className="font-mono text-[11px] px-2 py-0.5 bg-white border border-[#D5E3D8] rounded-sm text-[#1E3B29]">
+                        <div className="mt-4 p-3.5 rounded-sm bg-[#EBF3ED]/60 border border-[#D5E3D8] text-xs text-[#2B543A] flex flex-col sm:flex-row sm:items-center justify-between gap-2">
+                          <div>
+                            <p className="font-medium text-[#1E3B29]">
+                              This sanctuary is registered with phone-number-and-password credentials.
+                            </p>
+                            <p className="text-[11px] text-[#3A6B4C] mt-0.5">
+                              Phone numbers are login identifiers only; ownership is not verified and numbers are never displayed publicly.
+                            </p>
+                          </div>
+                          <span className="font-mono text-[11px] px-2 py-0.5 bg-white border border-[#D5E3D8] rounded-sm text-[#1E3B29] self-start sm:self-auto">
                             REGISTERED
                           </span>
                         </div>

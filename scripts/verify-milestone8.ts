@@ -173,8 +173,37 @@ async function runMilestone8Tests() {
     createdSessionIds.push(sessionAnon.id);
 
     // -------------------------------------------------------------------------
-    // Scenario 2: Anonymous identity can convert to a registered account
+    // Scenario 2: International Phone Normalization & Identity Conversion
     // -------------------------------------------------------------------------
+    // Test Uzbekistan phone formats (+998)
+    assert(
+      normalizePhoneNumber("+998 90 123 45 67") === "+998901234567" &&
+      normalizePhoneNumber("+998 (91) 987-65-43") === "+998919876543" &&
+      normalizePhoneNumber("998901234567") === "+998901234567" &&
+      normalizePhoneNumber("00998901234567") === "+998901234567",
+      "Phone normalization accurately supports Uzbekistan (+998) across formatted, plain, and 00-prefix inputs"
+    );
+
+    // Test International phone formats (+44 UK, +49 DE, +1 US/CA)
+    assert(
+      normalizePhoneNumber("+44 7911 123456") === "+447911123456" &&
+      normalizePhoneNumber("00447911123456") === "+447911123456" &&
+      normalizePhoneNumber("+1 (555) 234-5678") === "+15552345678" &&
+      normalizePhoneNumber("15552345678") === "+15552345678",
+      "Phone normalization supports standard international formats with country codes"
+    );
+
+    // Test strict rejection of ambiguous local numbers and invalid strings
+    assert(
+      normalizePhoneNumber("555-234-5678") === null && // ambiguous 10-digit without country code
+      normalizePhoneNumber("901234567") === null && // ambiguous 9-digit without country code
+      normalizePhoneNumber("+012345678") === null && // country code starting with 0
+      normalizePhoneNumber("12345") === null && // too short
+      normalizePhoneNumber("+12345678901234567") === null && // over 15 digits
+      normalizePhoneNumber("not-a-number") === null,
+      "Phone normalization strictly rejects ambiguous numbers without country code and invalid strings"
+    );
+
     const rawPhone = "+1 (555) 234-5678";
     const normalizedPhone = normalizePhoneNumber(rawPhone);
     assert(normalizedPhone === "+15552345678", "Phone normalization converts to standard E.164");
@@ -213,6 +242,37 @@ async function runMilestone8Tests() {
       convertedUser.phone === "+15552345678" &&
       convertedUser.passwordHash !== null,
       "Scenario 2: Anonymous identity can convert to a registered account in place"
+    );
+
+    // Test second identity conversion using an Uzbek phone number
+    const uzbekAnonUser = await db.user.create({
+      data: {
+        unsentId: generateUnsentId(),
+        accountType: "ANONYMOUS",
+        role: "USER",
+        recoveryTokenId: generateRecoveryKey().recoveryTokenId,
+        recoveryKeyHash: await hashSecret("REC-UZBEK-TEST-KEY-12345678"),
+      },
+    });
+    createdUserIds.push(uzbekAnonUser.id);
+
+    const uzbekNormalizedPhone = normalizePhoneNumber("+998 90 123 45 67")!;
+    const uzbekPasswordHash = await hashPassword("TashkentPass2026!");
+    const convertedUzbekUser = await db.user.update({
+      where: { id: uzbekAnonUser.id },
+      data: {
+        phone: uzbekNormalizedPhone,
+        passwordHash: uzbekPasswordHash,
+        accountType: "REGISTERED",
+        phoneVerifiedAt: null,
+      },
+    });
+
+    assert(
+      convertedUzbekUser.accountType === "REGISTERED" &&
+      convertedUzbekUser.phone === "+998901234567" &&
+      convertedUzbekUser.phoneVerifiedAt === null,
+      "Uzbekistan user successfully converted in place with normalized +998 phone"
     );
 
     // -------------------------------------------------------------------------
@@ -273,12 +333,12 @@ async function runMilestone8Tests() {
     // Scenario 5: Registered users can log in with phone + password
     // -------------------------------------------------------------------------
     const loginInputValidation = loginSchema.safeParse({
-      phone: "(555) 234-5678",
+      phone: "+1 (555) 234-5678",
       password: plainPassword,
     });
     assert(loginInputValidation.success, "Login schema validation succeeds for phone + password");
 
-    const normalizedLoginPhone = normalizePhoneNumber("(555) 234-5678");
+    const normalizedLoginPhone = normalizePhoneNumber("+1 (555) 234-5678");
     const userToLogin = await db.user.findUnique({
       where: { phone: normalizedLoginPhone! },
     });
@@ -288,11 +348,32 @@ async function runMilestone8Tests() {
     const isPasswordValid = await verifyPassword(plainPassword, userToLogin!.passwordHash!);
     assert(isPasswordValid, "Scenario 5: Registered user logs in successfully with phone + password");
 
+    // Uzbek user login check
+    const uzbekLoginValidation = loginSchema.safeParse({
+      phone: "+998 (90) 123-45-67",
+      password: "TashkentPass2026!",
+    });
+    assert(uzbekLoginValidation.success, "Login schema validation succeeds for Uzbek phone format");
+
+    const normalizedUzbekLoginPhone = normalizePhoneNumber("+998 (90) 123-45-67");
+    const uzbekUserToLogin = await db.user.findUnique({
+      where: { phone: normalizedUzbekLoginPhone! },
+    });
+    assert(uzbekUserToLogin !== null && uzbekUserToLogin.id === convertedUzbekUser.id, "User lookup by normalized Uzbek phone succeeds");
+
+    const isUzbekPasswordValid = await verifyPassword("TashkentPass2026!", uzbekUserToLogin!.passwordHash!);
+    assert(isUzbekPasswordValid, "Uzbek user logs in successfully with verified password");
+
     // -------------------------------------------------------------------------
-    // Scenario 6: Incorrect passwords are rejected
+    // Scenario 6: Incorrect passwords are rejected & timing attack protection works
     // -------------------------------------------------------------------------
     const isWrongPasswordValid = await verifyPassword("WrongPassword999", userToLogin!.passwordHash!);
     assert(!isWrongPasswordValid, "Scenario 6: Incorrect password verification is safely rejected");
+
+    // Test constant-time dummy hash verification
+    const DUMMY_HASH = "$argon2id$v=19$m=65536,t=3,p=4$Ze+gFNB/Q0fYeUPDY3R0ZA$x1BdkEkjybxknal3nf4du+O0M/OqcDphqD83n+IdpBg";
+    const dummyVerifyResult = await verifyPassword("non_existent_user_pass", DUMMY_HASH);
+    assert(!dummyVerifyResult, "Constant-time dummy hash verification runs valid Argon2id cycles without throwing");
 
     // -------------------------------------------------------------------------
     // Scenario 7: Duplicate phone registrations are rejected safely
@@ -331,6 +412,43 @@ async function runMilestone8Tests() {
     }
 
     assert(duplicateRejected, "Scenario 7: Duplicate phone registration is safely rejected at database uniqueness layer");
+
+    // Also test duplicate collision with Uzbek phone in different format: 998901234567 vs +998901234567
+    let uzbekCollisionRejected = false;
+    try {
+      const collidingUzbekNormalized = normalizePhoneNumber("998901234567");
+      assert(collidingUzbekNormalized === "+998901234567", "Unadorned 998 number normalizes to +998901234567");
+
+      const thirdUser = await db.user.create({
+        data: {
+          unsentId: generateUnsentId(),
+          accountType: "ANONYMOUS",
+          recoveryTokenId: generateRecoveryKey().recoveryTokenId,
+          recoveryKeyHash: await hashSecret("REC-KEY-THIRD-USER-12345678"),
+        },
+      });
+      createdUserIds.push(thirdUser.id);
+
+      await db.user.update({
+        where: { id: thirdUser.id },
+        data: {
+          phone: collidingUzbekNormalized,
+          passwordHash: hashedPassword,
+          accountType: "REGISTERED",
+        },
+      });
+    } catch (err: unknown) {
+      if (
+        typeof err === "object" &&
+        err !== null &&
+        "code" in err &&
+        (err as { code: string }).code === "P2002"
+      ) {
+        uzbekCollisionRejected = true;
+      }
+    }
+
+    assert(uzbekCollisionRejected, "Uzbek duplicate phone collision rejected safely across format variations");
 
     // -------------------------------------------------------------------------
     // Scenario 8: No account merging occurs

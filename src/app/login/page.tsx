@@ -102,7 +102,7 @@ export default function LoginPage() {
                   type="tel"
                   value={phone}
                   onChange={(e) => setPhone(e.target.value)}
-                  placeholder="+1 (555) 234-5678"
+                  placeholder="+998 90 123 45 67 or +1 (555) 234-5678"
                   required
                   className="w-full pl-10 pr-4 py-2 text-sm bg-white border border-[#E8E2D7] rounded-sm text-[#23201D] placeholder:text-[#B8B0A5] focus:outline-hidden focus:border-[#C27D77] transition-colors font-mono"
                 />
@@ -138,10 +138,14 @@ export default function LoginPage() {
               </div>
             </div>
 
-            <div className="p-3 bg-[#FAF8F5] border border-[#E8E2D7] rounded-sm text-xs text-[#878077] flex items-start gap-2">
-              <Info className="w-3.5 h-3.5 mt-0.5 shrink-0 text-[#878077]" />
-              <p className="text-[11px] leading-relaxed">
-                Phone numbers are login identifiers only. No SMS verification codes are sent.
+            <div className="p-3.5 bg-[#FAF8F5] border border-[#E8E2D7] rounded-sm text-xs text-[#878077] space-y-1.5">
+              <div className="flex items-center gap-1.5 font-medium text-[#57524C]">
+                <Info className="w-3.5 h-3.5 text-[#878077]" />
+                <span>No-SMS Security Model</span>
+              </div>
+              <p className="text-[11px] leading-relaxed text-[#57524C]">
+                Phone numbers are login identifiers only. Phone ownership is not verified and UNSENT never sends SMS messages.
+                Password and <Link href="/recover" className="text-[#C27D77] hover:underline">Recovery Key</Link> are your only recovery methods; losing both means permanent loss of account access.
               </p>
             </div>
 

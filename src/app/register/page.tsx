@@ -260,7 +260,7 @@ export default function RegisterPage() {
                     type="tel"
                     value={phone}
                     onChange={(e) => setPhone(e.target.value)}
-                    placeholder="+1 (555) 234-5678"
+                    placeholder="+998 90 123 45 67 or +1 (555) 234-5678"
                     required
                     className="w-full pl-10 pr-4 py-2 text-sm bg-white border border-[#E8E2D7] rounded-sm text-[#23201D] placeholder:text-[#B8B0A5] focus:outline-hidden focus:border-[#C27D77] transition-colors font-mono"
                   />
@@ -268,7 +268,7 @@ export default function RegisterPage() {
                 <p className="mt-1.5 text-[11px] text-[#878077] leading-relaxed flex items-start gap-1">
                   <Info className="w-3 h-3 mt-0.5 shrink-0 text-[#878077]" />
                   <span>
-                    Used as a unique login identifier only. No text messages or SMS verification codes will ever be sent.
+                    Include your international country code (e.g. +998 for Uzbekistan, +1 for US/Canada). Local numbers without country code will be rejected.
                   </span>
                 </p>
               </div>
@@ -318,15 +318,22 @@ export default function RegisterPage() {
               </div>
 
               {/* Informative notice on privacy & recovery */}
-              <div className="p-3.5 bg-[#FAF8F5] border border-[#E8E2D7] rounded-sm text-xs text-[#878077] space-y-1.5">
+              <div className="p-4 bg-[#FAF8F5] border border-[#E8E2D7] rounded-sm text-xs text-[#878077] space-y-2">
                 <div className="flex items-center gap-1.5 font-medium text-[#57524C]">
                   <KeyRound className="w-3.5 h-3.5 text-[#C27D77]" />
-                  <span>Permanent Account Recovery</span>
+                  <span>No-SMS Security Model & Account Recovery</span>
                 </div>
-                <p className="text-[11px] leading-relaxed">
-                  Because UNSENT sends no SMS, we cannot reset your password via text. If you ever forget your password,
-                  you will need your cryptographic Recovery Key to regain access.
-                </p>
+                <ul className="text-[11px] leading-relaxed space-y-1 list-disc pl-4 text-[#57524C]">
+                  <li>
+                    <strong>Login Identifier Only:</strong> Phone numbers act solely as a login identifier. UNSENT does not send SMS messages, and phone ownership is not verified.
+                  </li>
+                  <li>
+                    <strong>Two Recovery Keys Only:</strong> Your password and your cryptographic Recovery Key are your sole methods of access.
+                  </li>
+                  <li>
+                    <strong>Permanent Loss Warning:</strong> Because no SMS verification or reset gateway exists, losing both your password and your offline Recovery Key means permanent loss of account access.
+                  </li>
+                </ul>
               </div>
 
               <button
