@@ -32,6 +32,13 @@ export function Header() {
             Archive
           </Link>
 
+          <Link
+            href="/settings"
+            className="text-[#57524C] hover:text-[#23201D] transition-colors font-medium tracking-wide"
+          >
+            Settings
+          </Link>
+
           <NotificationBell />
 
           <Link

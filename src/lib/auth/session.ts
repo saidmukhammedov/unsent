@@ -199,3 +199,132 @@ export async function restoreSessionWithRecoveryKey(rawKey: string): Promise<{
     },
   };
 }
+
+/**
+ * Terminates the current active session and clears the session cookie.
+ */
+export async function terminateCurrentSession(): Promise<boolean> {
+  const cookieStore = await cookies();
+  const sessionToken = cookieStore.get(SESSION_COOKIE_NAME)?.value;
+
+  if (sessionToken) {
+    const tokenHash = hashToken(sessionToken);
+    await db.session.deleteMany({
+      where: { tokenHash },
+    });
+  }
+
+  cookieStore.delete(SESSION_COOKIE_NAME);
+  return true;
+}
+
+/**
+ * Invalidates all other active sessions for the current identity while preserving the current one.
+ */
+export async function invalidateOtherSessions(): Promise<{ count: number }> {
+  const current = await getCurrentSession();
+  if (!current) {
+    throw new Error("Unauthorized");
+  }
+
+  const result = await db.session.deleteMany({
+    where: {
+      userId: current.user.id,
+      NOT: { tokenHash: current.tokenHash },
+    },
+  });
+
+  return { count: result.count };
+}
+
+/**
+ * Retrieves session stats for the authenticated identity.
+ */
+export async function getActiveSessions(): Promise<{
+  totalCount: number;
+  currentSessionCreatedAt: Date;
+  otherSessionsCount: number;
+}> {
+  const current = await getCurrentSession();
+  if (!current) {
+    throw new Error("Unauthorized");
+  }
+
+  const sessions = await db.session.findMany({
+    where: { userId: current.user.id },
+    orderBy: { createdAt: "desc" },
+  });
+
+  const currentSession = sessions.find((s) => s.tokenHash === current.tokenHash);
+
+  return {
+    totalCount: sessions.length,
+    currentSessionCreatedAt: currentSession?.createdAt || current.user.createdAt,
+    otherSessionsCount: Math.max(0, sessions.length - 1),
+  };
+}
+
+/**
+ * Deliberately erases an identity and its private data.
+ * - Permanently erases private letters, personal notes, saved letters, reflection notes, and notifications.
+ * - Permanently severs ownership of published Orbit letters and responses (sets authorId = null).
+ * - Erases sessions, credentials, and user record.
+ * - Clears session cookie.
+ */
+export async function deleteAccountAndData(userId: string): Promise<void> {
+  // 1. Permanently delete private letters
+  await db.letter.deleteMany({
+    where: {
+      authorId: userId,
+      visibility: "PRIVATE",
+    },
+  });
+
+  // 2. Permanently delete personal notes
+  await db.letter.deleteMany({
+    where: {
+      authorId: userId,
+      entryType: "NOTE",
+    },
+  });
+
+  // 3. Permanently delete saved letters and reflections
+  await db.savedLetter.deleteMany({
+    where: { userId },
+  });
+
+  // 4. Permanently delete notifications
+  await db.notification.deleteMany({
+    where: { userId },
+  });
+
+  // 5. Permanently delete reports filed by user
+  await db.report.deleteMany({
+    where: { reporterId: userId },
+  });
+
+  // 6. For published Orbit letters and responses: orphan them cleanly
+  await db.letter.updateMany({
+    where: {
+      authorId: userId,
+      visibility: "PUBLIC",
+    },
+    data: {
+      authorId: null,
+    },
+  });
+
+  // 7. Delete all sessions
+  await db.session.deleteMany({
+    where: { userId },
+  });
+
+  // 8. Delete user record
+  await db.user.delete({
+    where: { id: userId },
+  });
+
+  // 9. Clear session cookie
+  const cookieStore = await cookies();
+  cookieStore.delete(SESSION_COOKIE_NAME);
+}
