@@ -5,7 +5,8 @@ import Link from "next/link";
 import { Header } from "@/components/ui/Header";
 import { Footer } from "@/components/ui/Footer";
 import { RecoveryCredentialModal } from "@/components/ui/RecoveryCredentialModal";
-import { Lock, Globe, FileText, CheckCircle2, AlertCircle, Trash2, Edit3 } from "lucide-react";
+import { APPROVED_THEMES, type Theme } from "@/lib/constants/themes";
+import { Lock, Globe, FileText, CheckCircle2, AlertCircle, Trash2, Edit3, ShieldAlert } from "lucide-react";
 
 type WritingMode = "PRIVATE_LETTER" | "PUBLIC_LETTER" | "PERSONAL_NOTE";
 
@@ -14,8 +15,11 @@ interface SavedItem {
   title: string | null;
   recipientName: string | null;
   content: string;
+  theme?: string | null;
   entryType: "LETTER" | "NOTE";
   visibility: "PRIVATE" | "PUBLIC";
+  isModerated?: boolean;
+  moderationReason?: string | null;
   createdAt: string;
   updatedAt: string;
 }
@@ -25,7 +29,8 @@ export default function ComposePage() {
   const [recipient, setRecipient] = useState("");
   const [title, setTitle] = useState("");
   const [content, setContent] = useState("");
-  const [saveStatus, setSaveStatus] = useState<"idle" | "saving" | "saved" | "error">("idle");
+  const [theme, setTheme] = useState<string>("");
+  const [saveStatus, setSaveStatus] = useState<"idle" | "saving" | "saved" | "error" | "held">("idle");
   const [statusMessage, setStatusMessage] = useState("Draft saved locally");
 
   // Active identity state
@@ -73,6 +78,7 @@ export default function ComposePage() {
           setRecipient(parsed.recipient || "");
           setTitle(parsed.title || "");
           setContent(parsed.content || "");
+          setTheme(parsed.theme || "");
           setStatusMessage("Draft restored from previous visit");
         }
       } catch (err) {
@@ -83,7 +89,7 @@ export default function ComposePage() {
     initSessionAndData();
   }, []);
 
-  // Handle mode switching without causing synchronous setState cascading renders in effects
+  // Handle mode switching
   const handleSwitchMode = (newMode: WritingMode) => {
     setActiveEditingId(null);
     setMode(newMode);
@@ -95,11 +101,13 @@ export default function ComposePage() {
         setRecipient(parsed.recipient || "");
         setTitle(parsed.title || "");
         setContent(parsed.content || "");
+        setTheme(parsed.theme || "");
         setStatusMessage("Draft restored from previous visit");
       } else {
         setRecipient("");
         setTitle("");
         setContent("");
+        setTheme("");
         setStatusMessage("Ready to write");
       }
     } catch {
@@ -113,10 +121,10 @@ export default function ComposePage() {
 
     const timeout = setTimeout(() => {
       try {
-        if (content.trim() || recipient.trim() || title.trim()) {
+        if (content.trim() || recipient.trim() || title.trim() || theme) {
           localStorage.setItem(
             getDraftKey(mode),
-            JSON.stringify({ recipient, title, content, updatedAt: Date.now() })
+            JSON.stringify({ recipient, title, content, theme, updatedAt: Date.now() })
           );
           setSaveStatus("saved");
           setStatusMessage("Draft saved locally");
@@ -127,13 +135,14 @@ export default function ComposePage() {
     }, 400);
 
     return () => clearTimeout(timeout);
-  }, [recipient, title, content, mode, activeEditingId, getDraftKey]);
+  }, [recipient, title, content, theme, mode, activeEditingId, getDraftKey]);
 
   const handleClearDraft = () => {
     if (window.confirm("Clear this draft? Your written text will be cleared.")) {
       setRecipient("");
       setTitle("");
       setContent("");
+      setTheme("");
       setActiveEditingId(null);
       localStorage.removeItem(getDraftKey(mode));
       setStatusMessage("Draft cleared");
@@ -154,6 +163,7 @@ export default function ComposePage() {
       title: title.trim() || undefined,
       recipientName: mode === "PERSONAL_NOTE" ? undefined : recipient.trim() || undefined,
       content: content.trim(),
+      theme: mode === "PERSONAL_NOTE" ? undefined : theme || undefined,
       visibility: mode === "PUBLIC_LETTER" ? "PUBLIC" : "PRIVATE",
       entryType: mode === "PERSONAL_NOTE" ? "NOTE" : "LETTER",
     };
@@ -162,17 +172,16 @@ export default function ComposePage() {
       try {
         let res: Response;
         if (activeEditingId) {
-          // Update existing note or private letter
           res = await fetch(`/api/letters/${activeEditingId}`, {
             method: "PATCH",
             headers: { "Content-Type": "application/json" },
             body: JSON.stringify({
               title: payload.title,
               content: payload.content,
+              theme: payload.theme,
             }),
           });
         } else {
-          // Create new letter or note
           res = await fetch("/api/letters", {
             method: "POST",
             headers: { "Content-Type": "application/json" },
@@ -182,27 +191,31 @@ export default function ComposePage() {
 
         const json = await res.json();
         if (json.success) {
-          setSaveStatus("saved");
-          setStatusMessage(
-            mode === "PUBLIC_LETTER"
-              ? "Letter released into Orbit anonymously"
-              : activeEditingId
-              ? "Changes saved"
-              : "Saved to your private space"
-          );
+          if (json.message) {
+            // Held for moderation review
+            setSaveStatus("held");
+            setStatusMessage(json.message);
+          } else {
+            setSaveStatus("saved");
+            setStatusMessage(
+              mode === "PUBLIC_LETTER"
+                ? "Letter released into Orbit anonymously"
+                : activeEditingId
+                ? "Changes saved"
+                : "Saved to your private space"
+            );
+          }
 
-          // Clear local draft for this mode
           localStorage.removeItem(getDraftKey(mode));
 
-          // Reset inputs if new submission
           if (!activeEditingId) {
             setRecipient("");
             setTitle("");
             setContent("");
+            setTheme("");
           }
           setActiveEditingId(null);
 
-          // Refresh saved items list
           const refreshRes = await fetch("/api/letters");
           const refreshJson = await refreshRes.json();
           if (refreshJson.success && Array.isArray(refreshJson.data)) {
@@ -231,6 +244,7 @@ export default function ComposePage() {
     setRecipient(item.recipientName || "");
     setTitle(item.title || "");
     setContent(item.content);
+    setTheme(item.theme || "");
     setStatusMessage(`Editing saved ${item.entryType === "NOTE" ? "note" : "letter"}`);
     window.scrollTo({ top: 0, behavior: "smooth" });
   };
@@ -253,6 +267,7 @@ export default function ComposePage() {
           setRecipient("");
           setTitle("");
           setContent("");
+          setTheme("");
         }
       } else {
         alert(json.error?.message || "Failed to delete");
@@ -290,7 +305,7 @@ export default function ComposePage() {
             <p className="text-xs text-[#57524C] leading-relaxed mb-6 font-sans">
               This letter will be published completely anonymously into Orbit.
               <strong className="text-[#23201D] block mt-2">
-                Important: Once released, public letters cannot be edited or erased by their authors.
+                Important: Once released, public letters cannot be edited or erased by their authors. All submissions are automatically screened for personal identifying information to protect anonymity.
               </strong>
             </p>
 
@@ -331,7 +346,6 @@ export default function ComposePage() {
             </Link>
           </div>
 
-          {/* Three Distinct Writing Modes */}
           <div className="inline-flex rounded-sm bg-[#F5F2EB] p-1 border border-[#E8E2D7]">
             <button
               type="button"
@@ -418,6 +432,34 @@ export default function ComposePage() {
             </div>
           )}
 
+          {/* Optional Theme Selection for Letters */}
+          {mode !== "PERSONAL_NOTE" && (
+            <div className="mb-6 border-b border-[#E8E2D7]/50 pb-4">
+              <label className="block text-[11px] font-mono uppercase tracking-wider text-[#878077] mb-2">
+                Editorial Theme (Optional)
+              </label>
+              <div className="flex flex-wrap gap-2">
+                {APPROVED_THEMES.map((t: Theme) => {
+                  const isSelected = theme.toLowerCase() === t.toLowerCase();
+                  return (
+                    <button
+                      key={t}
+                      type="button"
+                      onClick={() => setTheme(isSelected ? "" : t)}
+                      className={`px-3 py-1 rounded-full text-xs font-serif transition-colors cursor-pointer border ${
+                        isSelected
+                          ? "bg-[#23201D] text-[#FBF9F5] border-[#23201D]"
+                          : "bg-[#F5F2EB] text-[#57524C] border-[#E8E2D7] hover:border-[#D8D0C4]"
+                      }`}
+                    >
+                      {t}
+                    </button>
+                  );
+                })}
+              </div>
+            </div>
+          )}
+
           <div className="mb-6 border-b border-[#E8E2D7]/50 pb-2">
             <input
               type="text"
@@ -451,6 +493,12 @@ export default function ComposePage() {
                   <span>{statusMessage}</span>
                 </span>
               )}
+              {saveStatus === "held" && (
+                <span className="flex items-center gap-1 text-amber-800">
+                  <ShieldAlert className="w-3.5 h-3.5 text-amber-600" />
+                  <span>{statusMessage}</span>
+                </span>
+              )}
               {saveStatus === "error" && (
                 <span className="flex items-center gap-1 text-red-700">
                   <AlertCircle className="w-3.5 h-3.5" />
@@ -464,7 +512,7 @@ export default function ComposePage() {
             </div>
 
             <div className="flex items-center gap-3 w-full sm:w-auto justify-end">
-              {(content.trim() || recipient.trim() || title.trim()) && (
+              {(content.trim() || recipient.trim() || title.trim() || theme) && (
                 <button
                   type="button"
                   onClick={handleClearDraft}
@@ -509,9 +557,21 @@ export default function ComposePage() {
                 >
                   <div>
                     <div className="flex items-center justify-between text-[11px] font-mono text-[#878077] mb-2">
-                      <span className="uppercase px-1.5 py-0.5 rounded bg-[#F5F2EB]">
-                        {item.entryType === "NOTE" ? "Note" : item.visibility === "PUBLIC" ? "Orbit Letter" : "Private Letter"}
-                      </span>
+                      <div className="flex items-center gap-1.5">
+                        <span className="uppercase px-1.5 py-0.5 rounded bg-[#F5F2EB]">
+                          {item.entryType === "NOTE" ? "Note" : item.visibility === "PUBLIC" ? "Orbit Letter" : "Private Letter"}
+                        </span>
+                        {item.theme && (
+                          <span className="px-1.5 py-0.5 rounded bg-[#F5F2EB] text-[#57524C]">
+                            {item.theme}
+                          </span>
+                        )}
+                        {item.isModerated && (
+                          <span className="px-1.5 py-0.5 rounded bg-amber-100 text-amber-900 border border-amber-200">
+                            Held for Review
+                          </span>
+                        )}
+                      </div>
                       <span>{new Date(item.createdAt).toLocaleDateString()}</span>
                     </div>
 
@@ -529,7 +589,9 @@ export default function ComposePage() {
                   <div className="pt-3 border-t border-[#E8E2D7]/60 flex items-center justify-between text-xs">
                     {item.visibility === "PUBLIC" ? (
                       <span className="text-[11px] font-serif italic text-[#878077]">
-                        Published into Orbit (immutable)
+                        {item.isModerated
+                          ? "Held for review (not in Orbit)"
+                          : "Published into Orbit (immutable)"}
                       </span>
                     ) : (
                       <div className="flex items-center gap-3">

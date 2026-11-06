@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { ensureSession } from "@/lib/auth/session";
 import { db } from "@/lib/db";
 import { letterCreateSchema } from "@/lib/validation/letters";
+import { evaluateSafety } from "@/lib/safety/gate";
 
 export async function GET(req: NextRequest) {
   try {
@@ -34,8 +35,11 @@ export async function GET(req: NextRequest) {
         title: true,
         recipientName: true,
         content: true,
+        theme: true,
         entryType: true,
         visibility: true,
+        isModerated: true,
+        moderationReason: true,
         tags: true,
         createdAt: true,
         updatedAt: true,
@@ -81,12 +85,44 @@ export async function POST(req: NextRequest) {
       );
     }
 
-    const { title, recipientName, content, visibility, entryType, tags, parentLetterId } =
+    const { title, recipientName, content, visibility, entryType, theme, tags, parentLetterId } =
       parsed.data;
 
-    // Enforce business rules across writing modes:
+    // Enforce business rules:
     // 1. Personal notes are strictly PRIVATE
     const effectiveVisibility = entryType === "NOTE" ? "PRIVATE" : visibility;
+
+    let isModerated = false;
+    let moderationReason: string | null = null;
+    let statusMessage: string | null = null;
+
+    // 2. Public Publishing Safety Gate
+    if (effectiveVisibility === "PUBLIC") {
+      const safetyResult = evaluateSafety(content, recipientName, title);
+
+      if (safetyResult.action === "BLOCK") {
+        return NextResponse.json(
+          {
+            success: false,
+            error: {
+              code: "PROHIBITED_CONTENT",
+              message:
+                safetyResult.reason ||
+                "Submission blocked: Content violates sanctuary safety guidelines.",
+              details: safetyResult.detectedFlags,
+            },
+          },
+          { status: 400 }
+        );
+      }
+
+      if (safetyResult.action === "HOLD") {
+        isModerated = true;
+        moderationReason = safetyResult.reason || "Held for review due to potential identifying info.";
+        statusMessage =
+          "Your letter was saved, but is held for moderation review because it may contain contact information or identifying details. It will remain private and will not appear in Orbit until reviewed.";
+      }
+    }
 
     const letter = await db.letter.create({
       data: {
@@ -94,9 +130,12 @@ export async function POST(req: NextRequest) {
         title: title || null,
         recipientName: entryType === "NOTE" ? null : recipientName || null,
         content,
+        theme: theme || null,
         visibility: effectiveVisibility,
         entryType,
         tags,
+        isModerated,
+        moderationReason,
         parentLetterId: parentLetterId || null,
       },
       select: {
@@ -104,8 +143,10 @@ export async function POST(req: NextRequest) {
         title: true,
         recipientName: true,
         content: true,
+        theme: true,
         visibility: true,
         entryType: true,
+        isModerated: true,
         tags: true,
         createdAt: true,
         updatedAt: true,
@@ -116,6 +157,7 @@ export async function POST(req: NextRequest) {
       {
         success: true,
         data: letter,
+        ...(statusMessage ? { message: statusMessage } : {}),
       },
       { status: 201 }
     );

@@ -20,12 +20,24 @@ export interface LetterSummary {
   title?: string | null;
   recipientName?: string | null;
   content: string;
+  theme?: string | null;
   entryType: EntryType;
   visibility: LetterVisibility;
   tags: string[];
+  isSaved?: boolean;
   parentLetterId?: string | null;
   createdAt: Date;
   updatedAt: Date;
+}
+
+export interface PublicLetterItem {
+  id: string;
+  title?: string | null;
+  recipientName?: string | null;
+  content: string;
+  theme?: string | null;
+  createdAt: Date;
+  isSaved?: boolean;
 }
 
 export interface SessionContext {

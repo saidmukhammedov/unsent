@@ -74,6 +74,7 @@ model Letter {
   title            String?          @db.VarChar(200)
   recipientName    String?          @map("recipient_name") @db.VarChar(100)
   content          String           @db.Text
+  theme            String?          @db.VarChar(50)
   tags             String[]         @default([])
   isModerated      Boolean          @default(false) @map("is_moderated")
   moderationReason String?          @map("moderation_reason") @db.VarChar(255)
@@ -88,6 +89,7 @@ model Letter {
   reports      Report[]
 
   @@index([visibility, entryType, isModerated, createdAt(sort: Desc)])
+  @@index([visibility, entryType, isModerated, theme, createdAt(sort: Desc)])
   @@index([authorId, entryType, createdAt(sort: Desc)])
   @@index([parentLetterId])
   @@map("letters")
