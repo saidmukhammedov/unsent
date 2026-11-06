@@ -408,6 +408,35 @@ export default function SettingsPage() {
                         Created on:{" "}
                         {user?.createdAt ? new Date(user.createdAt).toLocaleDateString() : "Active"}
                       </p>
+
+                      {user?.accountType === "ANONYMOUS" ? (
+                        <div className="mt-4 p-4 rounded-sm bg-white border border-[#E8E2D7] flex flex-col sm:flex-row sm:items-center justify-between gap-3">
+                          <div>
+                            <h4 className="font-serif text-sm font-medium text-[#23201D]">
+                              Convert to Registered Account
+                            </h4>
+                            <p className="text-xs text-[#878077] mt-0.5">
+                              Add an optional phone number and password to sign in across devices. Preserves all your writings.
+                            </p>
+                          </div>
+                          <Link
+                            href="/register"
+                            className="inline-flex items-center justify-center gap-1.5 px-3.5 py-1.5 text-xs bg-[#23201D] text-[#FBF9F5] rounded-sm hover:bg-[#3D3834] transition-colors shrink-0"
+                          >
+                            <span>Convert Identity</span>
+                            <ExternalLink className="w-3.5 h-3.5" />
+                          </Link>
+                        </div>
+                      ) : (
+                        <div className="mt-4 p-3.5 rounded-sm bg-[#EBF3ED]/60 border border-[#D5E3D8] text-xs text-[#2B543A] flex items-center justify-between">
+                          <span>
+                            This sanctuary is registered with phone-number-and-password credentials.
+                          </span>
+                          <span className="font-mono text-[11px] px-2 py-0.5 bg-white border border-[#D5E3D8] rounded-sm text-[#1E3B29]">
+                            REGISTERED
+                          </span>
+                        </div>
+                      )}
                     </div>
                   </div>
                 </div>
@@ -426,10 +455,11 @@ export default function SettingsPage() {
                     </div>
 
                     <p className="text-xs sm:text-sm text-[#57524C] leading-relaxed">
-                      UNSENT does not use passwords or email addresses for anonymous identities.
-                      Instead, identity recovery relies on a 256-bit cryptographic key displayed
-                      once upon creation. If you clear your browser cookies or wish to write from
-                      another device, you can restore your entire archive using your Recovery Key.
+                      UNSENT provides two secure authentication methods: anonymous identities use a
+                      256-bit cryptographic Recovery Key displayed upon creation, while registered accounts
+                      use a phone number and password. Because UNSENT never sends SMS messages, there are
+                      no SMS password resets. Please keep your Recovery Key safe; losing both your password
+                      and your Recovery Key will result in permanent loss of access.
                     </p>
 
                     <div className="pt-2 flex flex-wrap items-center gap-3">
@@ -437,9 +467,24 @@ export default function SettingsPage() {
                         href="/recover"
                         className="inline-flex items-center gap-1.5 px-3.5 py-1.5 text-xs text-[#23201D] border border-[#23201D]/30 hover:border-[#23201D]/60 bg-[#F5F2EB] hover:bg-[#EFECE3] rounded-sm transition-all"
                       >
-                        <span>Go to Identity Restoration Page</span>
+                        <span>Restore Sanctuary via Recovery Key</span>
                         <ExternalLink className="w-3.5 h-3.5 text-[#878077]" />
                       </Link>
+                      {user?.accountType === "ANONYMOUS" ? (
+                        <Link
+                          href="/register"
+                          className="inline-flex items-center gap-1.5 px-3.5 py-1.5 text-xs text-[#57524C] border border-[#E8E2D7] bg-white hover:bg-[#F5F2EB] rounded-sm transition-all"
+                        >
+                          <span>Register Phone & Password</span>
+                        </Link>
+                      ) : (
+                        <Link
+                          href="/login"
+                          className="inline-flex items-center gap-1.5 px-3.5 py-1.5 text-xs text-[#57524C] border border-[#E8E2D7] bg-white hover:bg-[#F5F2EB] rounded-sm transition-all"
+                        >
+                          <span>Sign In to Another Device</span>
+                        </Link>
+                      )}
                     </div>
                   </div>
 

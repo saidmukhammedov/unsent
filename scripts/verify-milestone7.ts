@@ -1,7 +1,7 @@
 import { db } from "../src/lib/db";
 import { generateUnsentId } from "../src/lib/auth/identity";
 import { generateRecoveryKey, hashSecret, parseRecoveryKey, verifySecret } from "../src/lib/auth/crypto";
-import { generateSecureToken, hashToken, restoreSessionWithRecoveryKey } from "../src/lib/auth/session";
+import { generateSecureToken, hashToken } from "../src/lib/auth/session";
 import { deleteAccountSchema } from "../src/lib/validation/settings";
 
 async function runMilestone7Tests() {

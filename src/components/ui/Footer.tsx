@@ -13,7 +13,7 @@ export function Footer() {
           </p>
         </div>
 
-        <div className="flex items-center gap-6">
+        <div className="flex flex-wrap items-center gap-x-5 gap-y-2">
           <Link
             href="/orbit"
             className="hover:text-[#23201D] transition-colors underline-offset-4 hover:underline"
@@ -33,10 +33,22 @@ export function Footer() {
             Write
           </Link>
           <Link
+            href="/login"
+            className="hover:text-[#23201D] transition-colors underline-offset-4 hover:underline"
+          >
+            Sign In
+          </Link>
+          <Link
+            href="/register"
+            className="hover:text-[#23201D] transition-colors underline-offset-4 hover:underline"
+          >
+            Register
+          </Link>
+          <Link
             href="/recover"
             className="hover:text-[#23201D] transition-colors underline-offset-4 hover:underline"
           >
-            Restore Identity
+            Restore
           </Link>
           <Link
             href="/settings"

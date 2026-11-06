@@ -1,4 +1,5 @@
 import { z } from "zod";
+import { normalizePhoneNumber } from "./phone";
 
 export const recoveryKeySchema = z.object({
   recoveryKey: z
@@ -10,6 +11,50 @@ export const recoveryKeySchema = z.object({
 
 export type RecoveryKeyInput = z.infer<typeof recoveryKeySchema>;
 
+export const passwordSchema = z
+  .string()
+  .min(8, "Password must be at least 8 characters long")
+  .max(128, "Password must not exceed 128 characters")
+  .refine((val) => /[a-zA-Z]/.test(val), {
+    message: "Password must contain at least one letter",
+  })
+  .refine((val) => /[0-9]/.test(val), {
+    message: "Password must contain at least one number",
+  });
+
+export const registerSchema = z
+  .object({
+    phone: z
+      .string()
+      .trim()
+      .min(1, "Phone number is required")
+      .refine((val) => normalizePhoneNumber(val) !== null, {
+        message: "Please enter a valid phone number with country code (e.g. +1 555-234-5678)",
+      }),
+    password: passwordSchema,
+    confirmPassword: z.string().min(1, "Password confirmation is required"),
+  })
+  .refine((data) => data.password === data.confirmPassword, {
+    message: "Passwords do not match",
+    path: ["confirmPassword"],
+  });
+
+export type RegisterInput = z.infer<typeof registerSchema>;
+
+export const loginSchema = z.object({
+  phone: z
+    .string()
+    .trim()
+    .min(1, "Phone number is required")
+    .refine((val) => normalizePhoneNumber(val) !== null, {
+      message: "Please enter a valid phone number",
+    }),
+  password: z.string().min(1, "Password is required"),
+});
+
+export type LoginInput = z.infer<typeof loginSchema>;
+
+// Deprecated early schemas kept for compatibility if needed
 export const phoneRegistrationSchema = z.object({
   phone: z
     .string()
@@ -17,7 +62,7 @@ export const phoneRegistrationSchema = z.object({
     .regex(/^\+[1-9]\d{7,14}$/, "Phone number must follow international E.164 format (+...)"),
   password: z
     .string()
-    .min(10, "Password must be at least 10 characters long")
+    .min(8, "Password must be at least 8 characters long")
     .max(128, "Password must not exceed 128 characters"),
 });
 

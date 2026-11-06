@@ -62,6 +62,34 @@ export async function getCurrentSession(): Promise<{
 }
 
 /**
+ * Issues a new active session for a specific user ID and writes the persistent HTTP-only cookie.
+ */
+export async function createSessionForUser(userId: string): Promise<string> {
+  const sessionToken = generateSecureToken(32);
+  const tokenHash = hashToken(sessionToken);
+  const expiresAt = new Date(Date.now() + SESSION_MAX_AGE * 1000);
+
+  await db.session.create({
+    data: {
+      userId,
+      tokenHash,
+      expiresAt,
+    },
+  });
+
+  const cookieStore = await cookies();
+  cookieStore.set(SESSION_COOKIE_NAME, sessionToken, {
+    httpOnly: true,
+    secure: process.env.NODE_ENV === "production",
+    sameSite: "lax",
+    path: "/",
+    maxAge: SESSION_MAX_AGE,
+  });
+
+  return sessionToken;
+}
+
+/**
  * Creates a brand new anonymous identity and sets the persistent HTTP-only session cookie.
  * Returns the created user and the plain Recovery Key (shown to the user ONCE).
  */
@@ -82,26 +110,7 @@ export async function createAnonymousSession(): Promise<{
     },
   });
 
-  const sessionToken = generateSecureToken(32);
-  const tokenHash = hashToken(sessionToken);
-  const expiresAt = new Date(Date.now() + SESSION_MAX_AGE * 1000);
-
-  await db.session.create({
-    data: {
-      userId: user.id,
-      tokenHash,
-      expiresAt,
-    },
-  });
-
-  const cookieStore = await cookies();
-  cookieStore.set(SESSION_COOKIE_NAME, sessionToken, {
-    httpOnly: true,
-    secure: process.env.NODE_ENV === "production",
-    sameSite: "lax",
-    path: "/",
-    maxAge: SESSION_MAX_AGE,
-  });
+  await createSessionForUser(user.id);
 
   return {
     user: {
@@ -165,26 +174,7 @@ export async function restoreSessionWithRecoveryKey(rawKey: string): Promise<{
   });
 
   // Issue new session
-  const sessionToken = generateSecureToken(32);
-  const tokenHash = hashToken(sessionToken);
-  const expiresAt = new Date(Date.now() + SESSION_MAX_AGE * 1000);
-
-  await db.session.create({
-    data: {
-      userId: user.id,
-      tokenHash,
-      expiresAt,
-    },
-  });
-
-  const cookieStore = await cookies();
-  cookieStore.set(SESSION_COOKIE_NAME, sessionToken, {
-    httpOnly: true,
-    secure: process.env.NODE_ENV === "production",
-    sameSite: "lax",
-    path: "/",
-    maxAge: SESSION_MAX_AGE,
-  });
+  await createSessionForUser(user.id);
 
   return {
     success: true,
