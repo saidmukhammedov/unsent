@@ -4,7 +4,7 @@ export type UserRole = "USER" | "MODERATOR" | "ADMIN";
 
 export type LetterVisibility = "PRIVATE" | "PUBLIC";
 
-export type EntryType = "LETTER" | "NOTE";
+export type EntryType = "LETTER" | "NOTE" | "RESPONSE";
 
 export type ReportStatus = "PENDING" | "REVIEWED" | "DISMISSED" | "REMOVED";
 
@@ -74,6 +74,28 @@ export interface PublicLetterItem {
   theme?: string | null;
   createdAt: Date;
   isSaved?: boolean;
+}
+
+export interface LetterResponseItem {
+  id: string;
+  parentLetterId: string;
+  content: string;
+  createdAt: Date;
+}
+
+export interface NotificationItem {
+  id: string;
+  type: string;
+  letterId?: string | null;
+  payload?: {
+    responseId?: string;
+    preview?: string;
+    recipientName?: string | null;
+    letterTitle?: string | null;
+    createdAt?: string;
+  } | null;
+  isRead: boolean;
+  createdAt: Date;
 }
 
 export interface SessionContext {

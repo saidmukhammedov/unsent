@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { verifyModerator } from "@/lib/auth/moderator";
 import { db } from "@/lib/db";
 import { moderationActionSchema } from "@/lib/validation/reports";
+import { notifyAuthorOfResponse } from "@/lib/notifications/service";
 
 interface RouteContext {
   params: Promise<{ id: string }>;
@@ -48,6 +49,10 @@ export async function POST(req: NextRequest, context: RouteContext) {
       where: { id },
       select: {
         id: true,
+        authorId: true,
+        content: true,
+        entryType: true,
+        parentLetterId: true,
         visibility: true,
         isModerated: true,
         moderationStatus: true,
@@ -139,6 +144,16 @@ export async function POST(req: NextRequest, context: RouteContext) {
         },
       });
     });
+
+    // If an approved item is a response, notify the parent letter author
+    if (action === "APPROVE" && letter.entryType === "RESPONSE" && letter.parentLetterId) {
+      await notifyAuthorOfResponse({
+        originalLetterId: letter.parentLetterId,
+        responseId: letter.id,
+        responseContent: letter.content,
+        responderId: letter.authorId || "",
+      });
+    }
 
     return NextResponse.json({
       success: true,

@@ -26,6 +26,7 @@ enum LetterVisibility {
 enum EntryType {
   LETTER
   NOTE
+  RESPONSE
 }
 
 enum ReportStatus {
@@ -104,6 +105,7 @@ model Letter {
   @@index([visibility, entryType, isModerated, theme, createdAt(sort: Desc)])
   @@index([authorId, entryType, createdAt(sort: Desc)])
   @@index([parentLetterId])
+  @@index([parentLetterId, isModerated, createdAt(sort: Asc)])
   @@index([moderationStatus])
   @@map("letters")
 }

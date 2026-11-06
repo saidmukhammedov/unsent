@@ -1,4 +1,5 @@
 import Link from "next/link";
+import { NotificationBell } from "@/components/ui/NotificationBell";
 
 export function Header() {
   return (
@@ -16,13 +17,16 @@ export function Header() {
           </span>
         </Link>
 
-        <nav className="flex items-center gap-6 sm:gap-8 text-sm">
+        <nav className="flex items-center gap-5 sm:gap-7 text-sm">
           <Link
             href="/orbit"
             className="text-[#57524C] hover:text-[#23201D] transition-colors font-medium tracking-wide"
           >
             Orbit
           </Link>
+
+          <NotificationBell />
+
           <Link
             href="/compose"
             className="text-[#23201D] border border-[#23201D]/20 hover:border-[#23201D]/40 px-3.5 py-1.5 rounded-sm transition-all hover:bg-[#F5F2EB] font-medium tracking-wide"

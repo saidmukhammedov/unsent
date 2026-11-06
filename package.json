@@ -7,9 +7,10 @@
     "build": "next build",
     "start": "next start",
     "lint": "eslint",
-    "test": "tsx scripts/verify-milestone2.ts && tsx scripts/verify-milestone3.ts && tsx scripts/verify-milestone4.ts",
+    "test": "tsx scripts/verify-milestone2.ts && tsx scripts/verify-milestone3.ts && tsx scripts/verify-milestone4.ts && tsx scripts/verify-milestone5.ts",
     "test:m3": "tsx scripts/verify-milestone3.ts",
     "test:m4": "tsx scripts/verify-milestone4.ts",
+    "test:m5": "tsx scripts/verify-milestone5.ts",
     "db:generate": "prisma generate"
   },
   "dependencies": {

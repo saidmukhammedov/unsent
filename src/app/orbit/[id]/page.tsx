@@ -3,6 +3,7 @@ import { Header } from "@/components/ui/Header";
 import { Footer } from "@/components/ui/Footer";
 import { SaveButton } from "@/components/ui/SaveButton";
 import { ReportButton } from "@/components/ui/ReportButton";
+import { LetterResponsesSection } from "@/components/ui/LetterResponsesSection";
 import { getCurrentSession } from "@/lib/auth/session";
 import { db } from "@/lib/db";
 
@@ -160,6 +161,9 @@ export default async function OrbitLetterPage({ params }: PageProps) {
             </Link>
           </div>
         </article>
+
+        {/* Responses & Echoes */}
+        <LetterResponsesSection letterId={letter.id} />
 
         {/* Quiet Footnote */}
         <p className="mt-8 text-center text-xs text-[#878077] font-serif italic max-w-sm mx-auto">
