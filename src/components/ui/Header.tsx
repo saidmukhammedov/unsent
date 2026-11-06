@@ -25,6 +25,13 @@ export function Header() {
             Orbit
           </Link>
 
+          <Link
+            href="/archive"
+            className="text-[#57524C] hover:text-[#23201D] transition-colors font-medium tracking-wide"
+          >
+            Archive
+          </Link>
+
           <NotificationBell />
 
           <Link

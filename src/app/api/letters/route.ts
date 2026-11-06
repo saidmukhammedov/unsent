@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { ensureSession } from "@/lib/auth/session";
 import { db } from "@/lib/db";
-import { letterCreateSchema } from "@/lib/validation/letters";
+import { letterCreateSchema, personalNoteSchema } from "@/lib/validation/letters";
 import { evaluateSafety } from "@/lib/safety/gate";
 
 export async function GET(req: NextRequest) {
@@ -13,13 +13,13 @@ export async function GET(req: NextRequest) {
 
     const whereClause: {
       authorId: string;
-      entryType?: "LETTER" | "NOTE";
+      entryType?: "LETTER" | "NOTE" | "RESPONSE";
       visibility?: "PRIVATE" | "PUBLIC";
     } = {
       authorId: user.id,
     };
 
-    if (entryTypeParam === "LETTER" || entryTypeParam === "NOTE") {
+    if (entryTypeParam === "LETTER" || entryTypeParam === "NOTE" || entryTypeParam === "RESPONSE") {
       whereClause.entryType = entryTypeParam;
     }
 
@@ -70,23 +70,59 @@ export async function POST(req: NextRequest) {
     const { user } = await ensureSession();
     const body = await req.json();
 
-    const parsed = letterCreateSchema.safeParse(body);
-    if (!parsed.success) {
-      return NextResponse.json(
-        {
-          success: false,
-          error: {
-            code: "VALIDATION_ERROR",
-            message: "Submitted content did not pass validation.",
-            details: parsed.error.format(),
-          },
-        },
-        { status: 400 }
-      );
-    }
+    const isNote = body?.entryType === "NOTE";
+    let title: string | undefined | null;
+    let recipientName: string | undefined | null;
+    let content: string;
+    let theme: string | undefined | null;
+    let tags: string[] = [];
+    let visibility: "PRIVATE" | "PUBLIC" = "PRIVATE";
+    let entryType: "LETTER" | "NOTE" = isNote ? "NOTE" : "LETTER";
+    let parentLetterId: string | undefined;
 
-    const { title, recipientName, content, visibility, entryType, theme, tags, parentLetterId } =
-      parsed.data;
+    if (isNote) {
+      const parsedNote = personalNoteSchema.safeParse(body);
+      if (!parsedNote.success) {
+        return NextResponse.json(
+          {
+            success: false,
+            error: {
+              code: "VALIDATION_ERROR",
+              message: "Submitted note did not pass validation.",
+              details: parsedNote.error.format(),
+            },
+          },
+          { status: 400 }
+        );
+      }
+      title = parsedNote.data.title;
+      content = parsedNote.data.content;
+      tags = parsedNote.data.tags;
+      visibility = "PRIVATE";
+    } else {
+      const parsed = letterCreateSchema.safeParse(body);
+      if (!parsed.success) {
+        return NextResponse.json(
+          {
+            success: false,
+            error: {
+              code: "VALIDATION_ERROR",
+              message: "Submitted content did not pass validation.",
+              details: parsed.error.format(),
+            },
+          },
+          { status: 400 }
+        );
+      }
+      title = parsed.data.title;
+      recipientName = parsed.data.recipientName;
+      content = parsed.data.content;
+      visibility = parsed.data.visibility;
+      entryType = parsed.data.entryType;
+      theme = parsed.data.theme;
+      tags = parsed.data.tags;
+      parentLetterId = parsed.data.parentLetterId;
+    }
 
     // Enforce business rules:
     // 1. Personal notes are strictly PRIVATE

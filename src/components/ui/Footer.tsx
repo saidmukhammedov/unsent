@@ -21,6 +21,12 @@ export function Footer() {
             Orbit
           </Link>
           <Link
+            href="/archive"
+            className="hover:text-[#23201D] transition-colors underline-offset-4 hover:underline"
+          >
+            Archive
+          </Link>
+          <Link
             href="/compose"
             className="hover:text-[#23201D] transition-colors underline-offset-4 hover:underline"
           >

@@ -116,6 +116,7 @@ model SavedLetter {
   letterId    String   @map("letter_id") @db.Uuid
   privateNote String?  @map("private_note") @db.Text
   createdAt   DateTime @default(now()) @map("created_at")
+  updatedAt   DateTime @default(now()) @updatedAt @map("updated_at")
 
   user   User   @relation(fields: [userId], references: [id], onDelete: Cascade)
   letter Letter @relation(fields: [letterId], references: [id], onDelete: Cascade)
