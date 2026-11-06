@@ -22,12 +22,10 @@ export interface LetterSummary {
   content: string;
   entryType: EntryType;
   visibility: LetterVisibility;
-  isAnonymous: boolean;
-  authorUnsentId?: string | null;
   tags: string[];
-  resonanceCount: number;
   parentLetterId?: string | null;
   createdAt: Date;
+  updatedAt: Date;
 }
 
 export interface SessionContext {

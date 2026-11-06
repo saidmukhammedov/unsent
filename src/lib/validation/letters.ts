@@ -18,7 +18,6 @@ export const letterCreateSchema = z.object({
     .max(10000, "Letter cannot exceed 10,000 characters"),
   visibility: z.enum(["PRIVATE", "PUBLIC"]).default("PRIVATE"),
   entryType: z.enum(["LETTER", "NOTE"]).default("LETTER"),
-  isAnonymous: z.boolean().default(true),
   tags: z
     .array(
       z
@@ -35,6 +34,11 @@ export const letterCreateSchema = z.object({
 export type LetterCreateInput = z.infer<typeof letterCreateSchema>;
 
 export const personalNoteSchema = z.object({
+  title: z
+    .string()
+    .trim()
+    .max(200, "Title must not exceed 200 characters")
+    .optional(),
   content: z
     .string()
     .trim()
@@ -47,3 +51,11 @@ export const personalNoteSchema = z.object({
 });
 
 export type PersonalNoteInput = z.infer<typeof personalNoteSchema>;
+
+export const letterUpdateSchema = z.object({
+  title: z.string().trim().max(200).optional(),
+  content: z.string().trim().min(1).max(10000),
+  tags: z.array(z.string().trim().toLowerCase().max(30)).max(5).default([]),
+});
+
+export type LetterUpdateInput = z.infer<typeof letterUpdateSchema>;

@@ -33,6 +33,7 @@ model User {
   id              String       @id @default(uuid()) @db.Uuid
   unsentId        String       @unique @map("unsent_id") @db.VarChar(64)
   accountType     AccountType  @default(ANONYMOUS) @map("account_type")
+  recoveryTokenId String       @unique @map("recovery_token_id") @db.VarChar(32)
   recoveryKeyHash String       @map("recovery_key_hash") @db.VarChar(255)
   phone           String?      @unique @db.VarChar(20)
   passwordHash    String?      @map("password_hash") @db.VarChar(255)
@@ -70,12 +71,10 @@ model Letter {
   authorId         String?          @map("author_id") @db.Uuid
   entryType        EntryType        @default(LETTER) @map("entry_type")
   visibility       LetterVisibility @default(PRIVATE)
-  isAnonymous      Boolean          @default(true) @map("is_anonymous")
   title            String?          @db.VarChar(200)
   recipientName    String?          @map("recipient_name") @db.VarChar(100)
   content          String           @db.Text
   tags             String[]         @default([])
-  resonanceCount   Int              @default(0) @map("resonance_count")
   isModerated      Boolean          @default(false) @map("is_moderated")
   moderationReason String?          @map("moderation_reason") @db.VarChar(255)
   parentLetterId   String?          @map("parent_letter_id") @db.Uuid
