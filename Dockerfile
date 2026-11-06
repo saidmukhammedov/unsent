@@ -1,6 +1,9 @@
 # ==============================================================================
 # UNSENT — Production Multi-Stage Dockerfile for Google Cloud Run
 # Architecture: Node.js 22 LTS / Debian Slim / Standalone Next.js
+# Targets:
+#   1. runner (default): Minimal standalone web service for Cloud Run
+#   2. migrator: Dedicated container for executing Prisma migrations via Cloud Run Jobs
 # Region: europe-west3 (Frankfurt)
 # ==============================================================================
 
@@ -53,7 +56,31 @@ ENV NODE_ENV=production
 RUN pnpm build
 
 # ------------------------------------------------------------------------------
-# Stage 3: Production Minimal Runner
+# Stage 3: Dedicated Migration Runner (Cloud Run Job / Standalone Migration Target)
+# ------------------------------------------------------------------------------
+FROM node:22-slim AS migrator
+WORKDIR /app
+
+RUN apt-get update && apt-get install -y --no-install-recommends \
+    openssl \
+    ca-certificates \
+    && rm -rf /var/lib/apt/lists/*
+
+RUN corepack enable && corepack prepare pnpm@12.15.0 --activate
+
+COPY package.json pnpm-lock.yaml ./
+RUN pnpm install --frozen-lockfile
+
+COPY prisma ./prisma
+ENV PRISMA_CLI_QUERY_ENGINE_TYPE="binary"
+ENV PRISMA_CLIENT_ENGINE_TYPE="binary"
+RUN pnpm prisma generate
+
+# Executed as a batch job against DIRECT_URL
+ENTRYPOINT ["pnpm", "prisma", "migrate", "deploy"]
+
+# ------------------------------------------------------------------------------
+# Stage 4: Production Minimal Runner (Cloud Run Service)
 # ------------------------------------------------------------------------------
 FROM node:22-slim AS runner
 WORKDIR /app
@@ -82,8 +109,7 @@ COPY --from=builder /app/public ./public
 COPY --from=builder --chown=nextjs:nodejs /app/.next/standalone ./
 COPY --from=builder --chown=nextjs:nodejs /app/.next/static ./.next/static
 
-# Copy Prisma schema and migrations (for runtime schema reflection & migration tasks)
-COPY --from=builder --chown=nextjs:nodejs /app/prisma ./prisma
+# Copy package.json for runtime metadata
 COPY --from=builder --chown=nextjs:nodejs /app/package.json ./package.json
 
 USER nextjs

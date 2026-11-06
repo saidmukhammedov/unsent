@@ -9,6 +9,18 @@ export async function POST(req: NextRequest) {
 
     // Rate limiting: 5 recovery attempts per minute per IP
     const ipLimit = await checkRateLimit(`recover:ip:${clientIp}`, 5, 60_000);
+    if (ipLimit.status === "service_unavailable") {
+      return NextResponse.json(
+        {
+          success: false,
+          error: {
+            code: "SERVICE_UNAVAILABLE",
+            message: "Service temporarily unavailable. Please retry shortly.",
+          },
+        },
+        { status: 503, headers: { "Retry-After": "5" } }
+      );
+    }
     if (!ipLimit.allowed) {
       return NextResponse.json(
         {

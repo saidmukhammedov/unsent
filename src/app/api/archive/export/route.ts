@@ -29,6 +29,18 @@ export async function GET(req: NextRequest) {
 
     // Sensitive operation rate limiting
     const rateCheck = await checkRateLimit(`export:${user.id}`, 10, 60_000);
+    if (rateCheck.status === "service_unavailable") {
+      return NextResponse.json(
+        {
+          success: false,
+          error: {
+            code: "SERVICE_UNAVAILABLE",
+            message: "Service temporarily unavailable. Please retry shortly.",
+          },
+        },
+        { status: 503, headers: { "Retry-After": "5" } }
+      );
+    }
     if (!rateCheck.allowed) {
       return NextResponse.json(
         {

@@ -17,8 +17,7 @@ async function runInfraVerification() {
 
   // 1. Health Check Route
   console.log("1. Testing /api/health route handler...");
-  const healthReq = new Request("http://localhost:3000/api/health");
-  const healthRes = await healthHandler(healthReq);
+  const healthRes = await healthHandler();
   const healthData = await healthRes.json();
   console.log(`   Health response status: ${healthRes.status}`);
   console.log(`   Health payload:`, healthData);
@@ -66,7 +65,7 @@ async function runInfraVerification() {
     "SecretPass5#2026",
     "SecretPass6#2026",
   ];
-  console.log(`   Dispatching ${passwords.length} concurrent Argon2id hashes with semaphore limit of 4...`);
+  console.log(`   Dispatching ${passwords.length} concurrent Argon2id hashes with semaphore limit of 2 (bounded queue 10)...`);
   const hashes = await Promise.all(passwords.map((p) => hashPassword(p)));
   const elapsed = Date.now() - t0;
   console.log(`   Completed ${hashes.length} hashes in ${elapsed}ms without CPU/memory exhaustion.`);

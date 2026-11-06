@@ -137,6 +137,18 @@ export async function POST(req: NextRequest) {
     // 2. Public Publishing Safety Gate
     if (effectiveVisibility === "PUBLIC") {
       const rateLimit = await checkRateLimit(`submit:public:${user.id}`, 10, 60_000);
+      if (rateLimit.status === "service_unavailable") {
+        return NextResponse.json(
+          {
+            success: false,
+            error: {
+              code: "SERVICE_UNAVAILABLE",
+              message: "Service temporarily unavailable. Please retry shortly.",
+            },
+          },
+          { status: 503, headers: { "Retry-After": "5" } }
+        );
+      }
       if (!rateLimit.allowed) {
         return NextResponse.json(
           {

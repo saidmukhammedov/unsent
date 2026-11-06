@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { db } from "@/lib/db";
 import { createSessionForUser } from "@/lib/auth/session";
-import { verifyPassword } from "@/lib/auth/password";
+import { verifyPassword, Argon2OverloadError, Argon2TimeoutError } from "@/lib/auth/password";
 import { normalizePhoneNumber } from "@/lib/validation/phone";
 import { loginSchema } from "@/lib/validation/auth";
 import { checkRateLimit } from "@/lib/rate-limit";
@@ -16,6 +16,18 @@ export async function POST(req: NextRequest) {
 
     // Rate limiting: 5 attempts per 60 seconds per IP
     const ipLimit = await checkRateLimit(`login:ip:${clientIp}`, 5, 60_000);
+    if (ipLimit.status === "service_unavailable") {
+      return NextResponse.json(
+        {
+          success: false,
+          error: {
+            code: "SERVICE_UNAVAILABLE",
+            message: "Service temporarily unavailable. Please retry shortly.",
+          },
+        },
+        { status: 503, headers: { "Retry-After": "5" } }
+      );
+    }
     if (!ipLimit.allowed) {
       return NextResponse.json(
         {
@@ -61,6 +73,18 @@ export async function POST(req: NextRequest) {
 
     // Rate limiting per phone number: 5 attempts per 60 seconds
     const phoneLimit = await checkRateLimit(`login:phone:${normalizedPhone}`, 5, 60_000);
+    if (phoneLimit.status === "service_unavailable") {
+      return NextResponse.json(
+        {
+          success: false,
+          error: {
+            code: "SERVICE_UNAVAILABLE",
+            message: "Service temporarily unavailable. Please retry shortly.",
+          },
+        },
+        { status: 503, headers: { "Retry-After": "5" } }
+      );
+    }
     if (!phoneLimit.allowed) {
       return NextResponse.json(
         {
@@ -118,6 +142,19 @@ export async function POST(req: NextRequest) {
       },
     });
   } catch (error) {
+    if (error instanceof Argon2OverloadError || error instanceof Argon2TimeoutError) {
+      return NextResponse.json(
+        {
+          success: false,
+          error: {
+            code: "SERVER_BUSY",
+            message: "Authentication service is currently experiencing heavy load. Please retry in a few moments.",
+          },
+        },
+        { status: 503, headers: { "Retry-After": "5" } }
+      );
+    }
+
     console.error("Login error:", error);
     return NextResponse.json(
       {

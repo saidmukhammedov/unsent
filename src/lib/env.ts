@@ -16,32 +16,44 @@ export type ValidatedEnv = z.infer<typeof envSchema>;
 
 let cachedEnv: ValidatedEnv | null = null;
 
+export function resetCachedEnv(): void {
+  cachedEnv = null;
+}
+
 /**
  * Validates critical environment variables at startup.
  * In production mode, enforces that all required secrets (including Upstash Redis and Direct database URL)
  * are populated and meet security criteria.
+ *
+ * @param envSource Optional environment source (defaults to process.env)
+ * @param isRuntimeValidation If true, enforces production secrets even during builds
  */
-export function validateEnvironment(): ValidatedEnv {
-  if (cachedEnv) return cachedEnv;
+export function validateEnvironment(
+  envSource: Record<string, string | undefined> = process.env,
+  isRuntimeValidation: boolean = true
+): ValidatedEnv {
+  if (cachedEnv && envSource === process.env) return cachedEnv;
 
-  const parsed = envSchema.safeParse(process.env);
+  const parsed = envSchema.safeParse(envSource);
 
   if (!parsed.success) {
     const errorDetails = parsed.error.issues
       .map((i) => `  - ${i.path.join(".")}: ${i.message}`)
       .join("\n");
-    console.error(`[CRITICAL_ENV_VALIDATION_ERROR] Environment configuration is invalid:\n${errorDetails}`);
-    throw new Error(`Invalid environment configuration:\n${errorDetails}`);
+    const msg = `[CRITICAL_ENV_VALIDATION_ERROR] Environment configuration is invalid:\n${errorDetails}`;
+    console.error(msg);
+    throw new Error(msg);
   }
 
   const env = parsed.data;
 
   // Strict production assertions
-  if (env.NODE_ENV === "production") {
+  const isBuildPhase = process.env.NEXT_PHASE === "phase-production-build";
+  if (env.NODE_ENV === "production" && (isRuntimeValidation || !isBuildPhase)) {
     const missingProductionVars: string[] = [];
-    if (!env.DIRECT_URL) missingProductionVars.push("DIRECT_URL");
-    if (!env.UPSTASH_REDIS_REST_URL) missingProductionVars.push("UPSTASH_REDIS_REST_URL");
-    if (!env.UPSTASH_REDIS_REST_TOKEN) missingProductionVars.push("UPSTASH_REDIS_REST_TOKEN");
+    if (!env.DIRECT_URL || env.DIRECT_URL.trim() === "") missingProductionVars.push("DIRECT_URL");
+    if (!env.UPSTASH_REDIS_REST_URL || env.UPSTASH_REDIS_REST_URL.trim() === "") missingProductionVars.push("UPSTASH_REDIS_REST_URL");
+    if (!env.UPSTASH_REDIS_REST_TOKEN || env.UPSTASH_REDIS_REST_TOKEN.trim() === "") missingProductionVars.push("UPSTASH_REDIS_REST_TOKEN");
 
     if (missingProductionVars.length > 0) {
       const msg = `[CRITICAL_ENV_VALIDATION_ERROR] The following required production environment variables are missing: ${missingProductionVars.join(", ")}`;
@@ -50,6 +62,8 @@ export function validateEnvironment(): ValidatedEnv {
     }
   }
 
-  cachedEnv = env;
+  if (envSource === process.env) {
+    cachedEnv = env;
+  }
   return env;
 }

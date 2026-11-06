@@ -3,7 +3,7 @@ import { db } from "@/lib/db";
 import { getCurrentSession, createSessionForUser } from "@/lib/auth/session";
 import { generateUnsentId } from "@/lib/auth/identity";
 import { generateRecoveryKey, hashSecret } from "@/lib/auth/crypto";
-import { hashPassword } from "@/lib/auth/password";
+import { hashPassword, Argon2OverloadError, Argon2TimeoutError } from "@/lib/auth/password";
 import { normalizePhoneNumber } from "@/lib/validation/phone";
 import { registerSchema } from "@/lib/validation/auth";
 import { checkRateLimit } from "@/lib/rate-limit";
@@ -14,6 +14,18 @@ export async function POST(req: NextRequest) {
 
     // Rate limiting: 5 registration attempts per minute per IP
     const ipLimit = await checkRateLimit(`reg:ip:${clientIp}`, 5, 60_000);
+    if (ipLimit.status === "service_unavailable") {
+      return NextResponse.json(
+        {
+          success: false,
+          error: {
+            code: "SERVICE_UNAVAILABLE",
+            message: "Service temporarily unavailable. Please retry shortly.",
+          },
+        },
+        { status: 503, headers: { "Retry-After": "5" } }
+      );
+    }
     if (!ipLimit.allowed) {
       return NextResponse.json(
         {
@@ -150,6 +162,19 @@ export async function POST(req: NextRequest) {
       },
     });
   } catch (error: unknown) {
+    if (error instanceof Argon2OverloadError || error instanceof Argon2TimeoutError) {
+      return NextResponse.json(
+        {
+          success: false,
+          error: {
+            code: "SERVER_BUSY",
+            message: "Authentication service is currently experiencing heavy load. Please retry in a few moments.",
+          },
+        },
+        { status: 503, headers: { "Retry-After": "5" } }
+      );
+    }
+
     if (
       typeof error === "object" &&
       error !== null &&

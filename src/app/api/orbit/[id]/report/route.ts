@@ -57,6 +57,18 @@ export async function POST(req: NextRequest, context: RouteContext) {
 
     // Rate limiting: 10 reports per minute per identity
     const rlCheck = await checkRateLimit(`report:user:${user.id}`, 10, 60_000);
+    if (rlCheck.status === "service_unavailable") {
+      return NextResponse.json(
+        {
+          success: false,
+          error: {
+            code: "SERVICE_UNAVAILABLE",
+            message: "Service temporarily unavailable. Please retry shortly.",
+          },
+        },
+        { status: 503, headers: { "Retry-After": "5" } }
+      );
+    }
     if (!rlCheck.allowed) {
       return NextResponse.json(
         {

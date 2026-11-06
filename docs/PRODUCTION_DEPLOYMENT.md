@@ -110,26 +110,57 @@ gcloud secrets add-iam-policy-binding unsent-database-url \
 - **Never run `prisma migrate reset` in production.**
 - All migrations must be applied using `prisma migrate deploy` over the **direct unpooled connection (`DIRECT_URL`)**.
 
-### 4.2 Executing Migrations
-Migrations can be executed as a one-off Cloud Run Job or from a secure CI/CD runner:
+### 4.2 Verified Migration Execution Strategies
+
+> [!CAUTION]
+> The production Next.js runner container (`unsent:latest`) is a minimal standalone image that intentionally excludes devDependencies (such as the Prisma CLI) and package managers (`pnpm`). Attempting to execute `pnpm prisma` inside the runner container will fail.
+
+Use one of the two verified migration execution paths:
+
+#### Option A: Dedicated Migration Container Image & Cloud Run Job (Recommended)
+Build the dedicated `migrator` target defined in the multi-stage `Dockerfile`:
 
 ```bash
-# Option A: From authorized CI/CD pipeline (e.g. Cloud Build or GitHub Actions with GCP OIDC)
-export DATABASE_URL="${DATABASE_URL}"
-export DIRECT_URL="${DIRECT_URL}"
-pnpm prisma migrate deploy
+PROJECT_ID=$(gcloud config get-value project)
+MIGRATOR_TAG="europe-west3-docker.pkg.dev/${PROJECT_ID}/unsent-repo/unsent-migrator:latest"
+
+# 1. Build and push the dedicated migrator image target
+docker build --target migrator -t "${MIGRATOR_TAG}" .
+docker push "${MIGRATOR_TAG}"
+
+# 2. Create the Cloud Run Job with secrets attached
+gcloud run jobs create unsent-migrate \
+    --image="${MIGRATOR_TAG}" \
+    --region=europe-west3 \
+    --set-secrets="DIRECT_URL=unsent-direct-url:latest,DATABASE_URL=unsent-database-url:latest"
+
+# 3. Execute the migration job and wait for completion
+gcloud run jobs execute unsent-migrate --region=europe-west3 --wait
 ```
 
-```bash
-# Option B: Run via Google Cloud Run Job
-gcloud run jobs create unsent-migrate \
-    --image="europe-west3-docker.pkg.dev/$PROJECT_ID/unsent-repo/unsent:latest" \
-    --region=europe-west3 \
-    --set-secrets="DATABASE_URL=unsent-database-url:latest,DIRECT_URL=unsent-direct-url:latest" \
-    --command="pnpm" \
-    --args="prisma,migrate,deploy"
+#### Option B: Authenticated Cloud Build Pre-Deployment Step
+In corporate CI/CD pipelines, execute migrations as a separate step before deploying the Cloud Run service:
 
-gcloud run jobs execute unsent-migrate --region=europe-west3 --wait
+```yaml
+# cloudbuild.yaml snippet
+steps:
+  # Step 1: Run database migrations against direct Neon endpoint
+  - name: 'node:22-slim'
+    id: 'prisma-migrate'
+    entrypoint: 'sh'
+    args:
+      - '-c'
+      - |
+        apt-get update && apt-get install -y --no-install-recommends openssl ca-certificates
+        corepack enable && corepack prepare pnpm@12.15.0 --activate
+        pnpm install --frozen-lockfile
+        pnpm prisma migrate deploy
+    secretEnv: ['DIRECT_URL', 'DATABASE_URL']
+
+  # Step 2: Build and deploy standalone runner image
+  - name: 'gcr.io/cloud-builders/docker'
+    id: 'build-runner'
+    args: ['build', '--target', 'runner', '-t', 'europe-west3-docker.pkg.dev/$PROJECT_ID/unsent-repo/unsent:$COMMIT_SHA', '.']
 ```
 
 ---
@@ -152,7 +183,7 @@ gcloud builds submit \
 Argon2id allocates 64 MB of RAM and uses 4 CPU threads per hashing operation.
 - **Recommended Memory:** `2Gi` (2048 MB)
 - **Recommended CPU:** `2` vCPUs
-- **Recommended Concurrency:** `40` (prevents CPU thread saturation; internal semaphore in `password.ts` caps simultaneous Argon2 operations to 4)
+- **Recommended Concurrency:** `40` (Internal semaphore in `password.ts` caps simultaneous Argon2 operations to 2 with a bounded queue of 10 and 5000ms timeout to avoid CPU thread context thrashing on 2-vCPU instances while keeping memory bounded to 128 MB)
 - **CPU Boost:** `--cpu-boost` enabled to accelerate container cold starts.
 
 ### 5.3 Deploy the Service
