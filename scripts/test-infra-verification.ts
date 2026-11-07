@@ -47,12 +47,12 @@ async function runInfraVerification() {
   const fakeProdInvalid = envSchema.safeParse({
     NODE_ENV: "production",
     DATABASE_URL: "postgresql://user:pass@ep-cool-123.eu-central-1.aws.neon.tech/unsent?sslmode=require",
-    // Missing DIRECT_URL, UPSTASH_REDIS_REST_URL, UPSTASH_REDIS_REST_TOKEN, SESSION_SECRET
+    // Missing DIRECT_URL, UPSTASH_REDIS_REST_URL, UPSTASH_REDIS_REST_TOKEN, RATE_LIMIT_LOG_SECRET, SESSION_SECRET
   });
   if (fakeProdInvalid.success) {
     throw new Error("Production env should have rejected missing directUrl and Upstash variables!");
   }
-  console.log("   [PASS] Production env schema strictly requires DIRECT_URL, Upstash Redis credentials, and SESSION_SECRET\n");
+  console.log("   [PASS] Production env schema strictly requires DIRECT_URL, Upstash Redis credentials, RATE_LIMIT_LOG_SECRET, and SESSION_SECRET\n");
 
   // 4. Argon2id Concurrency Semaphore
   console.log("4. Testing Argon2id concurrency limiter semaphore...");

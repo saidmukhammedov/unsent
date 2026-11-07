@@ -8,6 +8,7 @@ export const envSchema = z.object({
   MODERATOR_TOKEN: z.string().min(16, "MODERATOR_TOKEN must be at least 16 characters"),
   UPSTASH_REDIS_REST_URL: z.string().optional(),
   UPSTASH_REDIS_REST_TOKEN: z.string().optional(),
+  RATE_LIMIT_LOG_SECRET: z.string().optional(),
   PORT: z.string().optional().default("8080"),
   CLOUD_RUN_REGION: z.string().optional().default("europe-west3"),
 });
@@ -54,6 +55,7 @@ export function validateEnvironment(
     if (!env.DIRECT_URL || env.DIRECT_URL.trim() === "") missingProductionVars.push("DIRECT_URL");
     if (!env.UPSTASH_REDIS_REST_URL || env.UPSTASH_REDIS_REST_URL.trim() === "") missingProductionVars.push("UPSTASH_REDIS_REST_URL");
     if (!env.UPSTASH_REDIS_REST_TOKEN || env.UPSTASH_REDIS_REST_TOKEN.trim() === "") missingProductionVars.push("UPSTASH_REDIS_REST_TOKEN");
+    if (!env.RATE_LIMIT_LOG_SECRET || env.RATE_LIMIT_LOG_SECRET.trim().length < 16) missingProductionVars.push("RATE_LIMIT_LOG_SECRET (min 16 chars)");
 
     if (missingProductionVars.length > 0) {
       const msg = `[CRITICAL_ENV_VALIDATION_ERROR] The following required production environment variables are missing: ${missingProductionVars.join(", ")}`;

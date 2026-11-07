@@ -45,6 +45,7 @@ Store all production secrets in **Google Cloud Secret Manager**. Never hardcode 
 | `SESSION_SECRET` | 64-char random hex for session signature | `openssl rand -hex 32` |
 | `MODERATOR_TOKEN` | 32+ char secret for steward moderation | `openssl rand -hex 24` |
 | `MODERATOR_UNSENT_IDS` | Initial steward identities | `@steward_primary,@ops_lead` |
+| `RATE_LIMIT_LOG_SECRET` | 32+ char secret for HMAC-SHA256 correlation logging | `openssl rand -hex 32` |
 | `UPSTASH_REDIS_REST_URL` | Upstash Redis Frankfurt REST URL | `https://eu1-active-slug.upstash.io` |
 | `UPSTASH_REDIS_REST_TOKEN` | Upstash Redis REST access token | `AX7...` |
 
@@ -84,6 +85,7 @@ echo -n "postgresql://..." | gcloud secrets create unsent-direct-url --data-file
 # Application secrets
 echo -n "$(openssl rand -hex 32)" | gcloud secrets create unsent-session-secret --data-file=- --replication-policy=automatic
 echo -n "$(openssl rand -hex 24)" | gcloud secrets create unsent-moderator-token --data-file=- --replication-policy=automatic
+echo -n "$(openssl rand -hex 32)" | gcloud secrets create unsent-rate-limit-log-secret --data-file=- --replication-policy=automatic
 
 # Upstash credentials
 echo -n "https://..." | gcloud secrets create unsent-upstash-url --data-file=- --replication-policy=automatic
@@ -119,6 +121,9 @@ Use one of the two verified migration execution paths:
 
 #### Option A: Dedicated Migration Container Image & Cloud Run Job (Recommended)
 Build the dedicated `migrator` target defined in the multi-stage `Dockerfile`:
+
+> [!NOTE]
+> **Workstation Docker Status:** Because Docker CLI is not installed on the local developer workstation, the `migrator` stage is structurally verified and pinned in the Dockerfile, but its actual container execution must be verified during the initial Cloud Build run in GCP.
 
 ```bash
 PROJECT_ID=$(gcloud config get-value project)
@@ -200,15 +205,43 @@ gcloud run deploy unsent-web \
     --max-instances=20 \
     --cpu-boost \
     --port=8080 \
+    --startup-probe-path=/api/health \
+    --startup-probe-initial-delay=5s \
+    --startup-probe-period=10s \
+    --startup-probe-timeout=3s \
+    --startup-probe-failure-threshold=6 \
+    --liveness-probe-path=/api/health \
+    --liveness-probe-period=30s \
+    --liveness-probe-timeout=3s \
+    --liveness-probe-failure-threshold=3 \
     --set-env-vars="NODE_ENV=production,CLOUD_RUN_REGION=europe-west3,NEXT_PUBLIC_APP_URL=https://unsent.space" \
     --set-secrets="\
 DATABASE_URL=unsent-database-url:latest,\
 DIRECT_URL=unsent-direct-url:latest,\
 SESSION_SECRET=unsent-session-secret:latest,\
 MODERATOR_TOKEN=unsent-moderator-token:latest,\
+RATE_LIMIT_LOG_SECRET=unsent-rate-limit-log-secret:latest,\
 UPSTASH_REDIS_REST_URL=unsent-upstash-url:latest,\
 UPSTASH_REDIS_REST_TOKEN=unsent-upstash-token:latest"
 ```
+
+### 5.4 Cloud Run Health Probe Architecture & Operational Cautions
+
+#### How Cloud Run Uses `/api/health`
+1. **No Automatic Discovery:** Cloud Run does **not** automatically probe `/api/health` or execute the Dockerfile `HEALTHCHECK` directive. Probes must be configured explicitly on deployment via `--startup-probe-...` and `--liveness-probe-...` flags.
+2. **Startup Probe:**
+   - Evaluated during container boot.
+   - Traffic routing is withheld until `/api/health` returns HTTP 200.
+   - Allows up to 65 seconds ($5\text{s initial delay} + 6 \times 10\text{s attempts}$) for Prisma connection pool establishment and Upstash ping verification before marking the container instance failed.
+3. **Liveness Probe & Restart Precautions:**
+   - Periodically queries `/api/health` every 30 seconds.
+   - Requires 3 consecutive HTTP 503 failures before Cloud Run triggers a container restart.
+   - **Crucial Limitation:** Because `/api/health` probes both PostgreSQL and Upstash Redis, a transient upstream cloud disruption (e.g., brief Neon compute resume or Upstash maintenance) will cause `/api/health` to return 503. If liveness probe thresholds are too tight (e.g. failure threshold 1 or period 5s), all running container instances could reboot simultaneously in a cascading restart storm. Setting `--liveness-probe-period=30s` with `--liveness-probe-failure-threshold=3` provides a 90-second buffer to absorb transient cloud network jitter.
+
+#### Internal Probe Isolation & Safety
+- **Bounded Latency:** `/api/health` bounds the PostgreSQL query (`SELECT 1`) and the Redis ping (`redis.ping()`) to 2000ms each using `Promise.race`.
+- **Zero Information Leakage:** Public responses contain only high-level status booleans (`connected`/`disconnected`, `configured`, `reachable`). Raw database errors, connection strings, Redis tokens, and stack traces are strictly scrubbed from public outputs.
+- **Ordinary Request Isolation:** Ordinary user requests (such as viewing Orbit, saving letters, or authentication) never execute infrastructure health probes. Database connectivity is maintained via pooled Prisma connections, and rate-limiting uses direct sliding window Redis calls without triggering diagnostic ping probes.
 
 ---
 

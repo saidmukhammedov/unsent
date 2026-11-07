@@ -37,6 +37,7 @@ async function runRateLimiterSecurityTests() {
     // -------------------------------------------------------------------------
     console.log("Test 1: Missing Redis credentials in production (Fail-Closed)");
     (process.env as Record<string, string | undefined>).NODE_ENV = "production";
+    process.env.RATE_LIMIT_LOG_SECRET = "test-log-secret-for-security-tests-32chars!";
     delete process.env.UPSTASH_REDIS_REST_URL;
     delete process.env.UPSTASH_REDIS_REST_TOKEN;
     resetRedisClient();
@@ -134,8 +135,8 @@ async function runRateLimiterSecurityTests() {
       "5.1: Category safely extracts action prefix ('login:phone')"
     );
     assert(
-      !correlationId.includes(sensitivePhone) && correlationId.length === 12,
-      "5.2: CorrelationId is a truncated 12-char SHA256 hash without sensitive phone number"
+      !correlationId.includes(sensitivePhone) && correlationId.length === 16,
+      "5.2: CorrelationId is a truncated 16-char HMAC-SHA256 keyed hash without sensitive phone number"
     );
 
     // Test sanitizeLogMessage
@@ -197,6 +198,59 @@ async function runRateLimiterSecurityTests() {
     assert(
       capturedLogs.includes("Refusing operation"),
       "6.4: Captured logs record safe failure diagnostics ('Refusing operation')"
+    );
+
+    // -------------------------------------------------------------------------
+    // Test 7: HMAC-SHA256 Keyed Hash Security & Unkeyed Fallback Prevention
+    // -------------------------------------------------------------------------
+    console.log("\nTest 7: HMAC-SHA256 Keyed Hash Verification");
+    const testSecretA = "secret-key-aaaa-1234567890abcdef";
+    const testSecretB = "secret-key-bbbb-1234567890abcdef";
+    const testKey1 = "login:phone:+998901112233";
+    const testKey2 = "login:phone:+998904445566";
+
+    // 7.1 Same key with same secret produces identical correlationId
+    const resA1 = getSafeKeyCorrelation(testKey1, testSecretA);
+    const resA2 = getSafeKeyCorrelation(testKey1, testSecretA);
+    assert(
+      resA1.correlationId === resA2.correlationId,
+      "7.1: Same key with same secret produces consistent correlation ID"
+    );
+
+    // 7.2 Same key with different secrets produces different correlationIds
+    const resB1 = getSafeKeyCorrelation(testKey1, testSecretB);
+    assert(
+      resA1.correlationId !== resB1.correlationId,
+      "7.2: Same key with different secrets produces distinct correlation IDs (unkeyed rainbow table immune)"
+    );
+
+    // 7.3 Different keys produce different correlationIds with same secret
+    const resA3 = getSafeKeyCorrelation(testKey2, testSecretA);
+    assert(
+      resA1.correlationId !== resA3.correlationId,
+      "7.3: Different keys produce distinct correlation IDs"
+    );
+
+    // 7.4 In production mode, missing RATE_LIMIT_LOG_SECRET throws error (never unkeyed fallback)
+    (process.env as Record<string, string | undefined>).NODE_ENV = "production";
+    delete process.env.RATE_LIMIT_LOG_SECRET;
+    let threwUnkeyed = false;
+    try {
+      getSafeKeyCorrelation(testKey1);
+    } catch (err: unknown) {
+      threwUnkeyed = true;
+      assert(
+        String(err).includes("RATE_LIMIT_LOG_SECRET is required in production"),
+        "7.4: Production mode throws explicitly when RATE_LIMIT_LOG_SECRET is missing"
+      );
+    }
+    assert(threwUnkeyed, "7.5: Unkeyed fallback is strictly prevented in production");
+
+    // 7.6 checkRateLimit fails closed in production when RATE_LIMIT_LOG_SECRET is missing
+    const unkeyedRlCheck = await checkRateLimit(testKey1, 5, 60_000);
+    assert(
+      unkeyedRlCheck.allowed === false && unkeyedRlCheck.status === "service_unavailable",
+      "7.6: checkRateLimit fails closed with 503 when RATE_LIMIT_LOG_SECRET is missing in production"
     );
 
     console.log("\n=======================================================");

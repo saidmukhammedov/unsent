@@ -116,7 +116,10 @@ USER nextjs
 
 EXPOSE 8080
 
-# Health check probe for local container testing
+# Health check probe for local Docker container testing
+# NOTE: Google Cloud Run ignores this Dockerfile HEALTHCHECK directive.
+# Cloud Run health checks must be explicitly configured via gcloud deployment flags
+# (--startup-probe-path=/api/health and optional --liveness-probe-path=/api/health).
 HEALTHCHECK --interval=30s --timeout=5s --start-period=10s --retries=3 \
   CMD curl -f http://localhost:8080/api/health || exit 1
 

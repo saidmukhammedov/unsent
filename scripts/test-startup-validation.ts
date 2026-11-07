@@ -65,6 +65,7 @@ async function runStartupValidationTests() {
         NODE_ENV: "production",
         UPSTASH_REDIS_REST_URL: "https://example.upstash.io",
         UPSTASH_REDIS_REST_TOKEN: "AXtoken1234567890",
+        RATE_LIMIT_LOG_SECRET: "test-log-secret-32chars-for-hmac",
         DIRECT_URL: "",
       },
       true
@@ -130,6 +131,7 @@ async function runStartupValidationTests() {
         ...validBase,
         NODE_ENV: "production",
         DIRECT_URL: "postgresql://postgres:password@localhost:5432/unsent_dev",
+        RATE_LIMIT_LOG_SECRET: "test-log-secret-32chars-for-hmac",
         // Missing UPSTASH_REDIS_REST_URL and UPSTASH_REDIS_REST_TOKEN
       },
       true
@@ -142,6 +144,33 @@ async function runStartupValidationTests() {
     );
   }
   assert(threwUpstash, "5.2: Production startup aborted when Upstash credentials are missing");
+
+  // -------------------------------------------------------------------------
+  // Test 5b: Missing RATE_LIMIT_LOG_SECRET in production prevents startup
+  // -------------------------------------------------------------------------
+  console.log("\nTest 5b: Missing RATE_LIMIT_LOG_SECRET in production prevents startup");
+  resetCachedEnv();
+  let threwLogSecret = false;
+  try {
+    validateEnvironment(
+      {
+        ...validBase,
+        NODE_ENV: "production",
+        DIRECT_URL: "postgresql://postgres:password@localhost:5432/unsent_dev",
+        UPSTASH_REDIS_REST_URL: "https://example.upstash.io",
+        UPSTASH_REDIS_REST_TOKEN: "AXtoken1234567890",
+        // Missing RATE_LIMIT_LOG_SECRET
+      },
+      true
+    );
+  } catch (err: unknown) {
+    threwLogSecret = true;
+    assert(
+      String(err).includes("RATE_LIMIT_LOG_SECRET"),
+      "5b.1: Error message explicitly identifies missing RATE_LIMIT_LOG_SECRET in production"
+    );
+  }
+  assert(threwLogSecret, "5b.2: Production startup aborted when RATE_LIMIT_LOG_SECRET is missing");
 
   // -------------------------------------------------------------------------
   // Test 6: Development mode remains usable without production-only credentials
@@ -194,6 +223,23 @@ async function runStartupValidationTests() {
     resetCachedEnv();
     await register();
     assert(true, "7.3: instrumentation register() executes and succeeds with valid environment");
+
+    // 7c: Verify register() succeeds in production when all production secrets are provided
+    (process.env as unknown as Record<string, string | undefined>) = {
+      ...originalProcessEnv,
+      NEXT_RUNTIME: "nodejs",
+      DATABASE_URL: "postgresql://postgres:password@localhost:5432/unsent_dev",
+      DIRECT_URL: "postgresql://postgres:password@localhost:5432/unsent_dev",
+      SESSION_SECRET: "01234567890123456789012345678901",
+      MODERATOR_TOKEN: "0123456789abcdef0123",
+      UPSTASH_REDIS_REST_URL: "https://example.upstash.io",
+      UPSTASH_REDIS_REST_TOKEN: "AXtoken1234567890",
+      RATE_LIMIT_LOG_SECRET: "test-log-secret-32chars-for-hmac",
+      NODE_ENV: "production",
+    };
+    resetCachedEnv();
+    await register();
+    assert(true, "7.4: instrumentation register() executes and succeeds with full production environment");
   } finally {
     process.env = originalProcessEnv;
     if (prevRuntime !== undefined) {

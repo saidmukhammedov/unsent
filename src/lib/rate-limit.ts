@@ -87,10 +87,37 @@ export function sanitizeLogMessage(message: string): string {
 }
 
 /**
- * Derives a safe category and a non-reversible correlation ID for a rate-limit key.
- * Never leaks raw identifiers (phone numbers, IPs, user UUIDs) into log sinks.
+ * Retrieves the secret key used for HMAC-SHA256 correlation hashing.
+ * In production mode, RATE_LIMIT_LOG_SECRET is mandatory (min 16 characters).
+ * If missing in production, throws a security error to prevent unkeyed hashing fallback.
+ * In development/test mode, falls back to a deterministic development key if not configured.
  */
-export function getSafeKeyCorrelation(key: string): { category: string; correlationId: string } {
+export function getLogHashSecret(secretOverride?: string): string {
+  if (secretOverride) return secretOverride;
+
+  const envSecret = process.env.RATE_LIMIT_LOG_SECRET;
+  if (envSecret && envSecret.trim().length >= 16) {
+    return envSecret.trim();
+  }
+
+  if (process.env.NODE_ENV === "production") {
+    throw new Error(
+      "[CRITICAL_SECURITY_ERROR] RATE_LIMIT_LOG_SECRET is required in production (min 16 characters) for keyed log correlation."
+    );
+  }
+
+  return "unsent-development-log-hmac-secret-only-32chars";
+}
+
+/**
+ * Derives a safe category and a keyed HMAC-SHA256 correlation ID for a rate-limit key.
+ * Never leaks raw identifiers (phone numbers, IPs, user UUIDs) into log sinks.
+ * In production, strictly requires a secret key and never falls back to unkeyed hashing.
+ */
+export function getSafeKeyCorrelation(
+  key: string,
+  secretOverride?: string
+): { category: string; correlationId: string } {
   const parts = key.split(":");
   let category = "general";
 
@@ -100,8 +127,12 @@ export function getSafeKeyCorrelation(key: string): { category: string; correlat
     category = parts[0];
   }
 
-  // Cryptographic non-reversible correlation hash (12 characters)
-  const correlationId = crypto.createHash("sha256").update(key).digest("hex").slice(0, 12);
+  const secret = getLogHashSecret(secretOverride);
+  const correlationId = crypto
+    .createHmac("sha256", secret)
+    .update(key)
+    .digest("hex")
+    .slice(0, 16);
 
   return { category, correlationId };
 }
@@ -232,7 +263,28 @@ export async function checkRateLimit(
   windowMs: number = 60_000
 ): Promise<RateLimitResult> {
   const isProd = process.env.NODE_ENV === "production";
-  const { category, correlationId } = getSafeKeyCorrelation(key);
+  let category = "general";
+  let correlationId = "[UNKEYED_REJECTED]";
+
+  try {
+    const correlation = getSafeKeyCorrelation(key);
+    category = correlation.category;
+    correlationId = correlation.correlationId;
+  } catch {
+    if (isProd) {
+      console.error(
+        "[CRITICAL_RATE_LIMITER_CONFIG_ERROR] Failed to generate keyed correlation ID (missing RATE_LIMIT_LOG_SECRET in production). Refusing operation (fail-closed)."
+      );
+      return {
+        allowed: false,
+        remaining: 0,
+        resetMs: 0,
+        status: "service_unavailable",
+        error: "SERVICE_UNAVAILABLE",
+      };
+    }
+  }
+
   const redis = getRedis();
 
   if (!redis) {

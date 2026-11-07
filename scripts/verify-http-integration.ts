@@ -16,10 +16,11 @@ async function ensureServerRunning(): Promise<void> {
     // Not currently running, will auto-spawn
   }
 
-  console.log(`Starting Next.js production server on ${BASE_URL} for integration tests...`);
-  spawnedServer = spawn("npx", ["next", "start", "-p", "3099"], {
+  console.log(`Starting Next.js server on ${BASE_URL} for integration tests...`);
+  spawnedServer = spawn("npx", ["next", "dev", "-p", "3099"], {
     shell: true,
     stdio: "ignore",
+    env: { ...process.env, NODE_ENV: "development", PORT: "3099" },
   });
 
   for (let i = 0; i < 30; i++) {
