@@ -3,9 +3,9 @@
 > [!IMPORTANT]
 > **APPROVED $0 ARCHITECTURE STATUS:**
 > The primary, mandatory production architecture for UNSENT is the **Strict $0 Free-Tier Architecture**:
-> - **Web Hosting:** Vercel Hobby ($0 / month, personal/non-commercial use)
-> - **Database:** Neon PostgreSQL Free ($0 / month, 1 GB storage, 100 CU-hrs/mo)
-> - **Rate Limiting:** Upstash Redis Free ($0 / month, 10,000 commands/day)
+> - **Web Hosting:** Vercel Hobby ($0 / month, personal/non-commercial use, 1M invocations/mo, 100 GB Fast Data Transfer)
+> - **Database:** Neon PostgreSQL Free ($0 / month, 1 GB storage, 100 CU-hrs/mo, 5 GB egress, 6-hr PITR)
+> - **Rate Limiting:** Upstash Redis Free ($0 / month, 500,000 commands/month, 256 MB storage, 10 GB bandwidth)
 > - **Domain:** Free `*.vercel.app` subdomain with automated TLS
 >
 > 📖 **Primary Deployment Guide:** Follow [FREE_TIER_DEPLOYMENT.md](./FREE_TIER_DEPLOYMENT.md) for complete step-by-step instructions.
@@ -47,8 +47,10 @@ For complete step-by-step setup, see [FREE_TIER_DEPLOYMENT.md](./FREE_TIER_DEPLO
    - Region: `Europe (Frankfurt) / aws-eu-central-1`
    - Pooled connection string (`port 6543`, `?pgbouncer=true`): Set as `DATABASE_URL`.
    - Direct connection string (`port 5432`): Set as `DIRECT_URL`.
+   - Limits: 1 GB storage, 100 CU-hours/month, 5 GB egress/month, 6-hour PITR restore.
 2. **Upstash Redis Free:**
    - Region: `eu-central-1 (Frankfurt)`
+   - Limits: 500,000 commands/month, 256 MB storage, 10 GB bandwidth.
    - REST API URL: Set as `UPSTASH_REDIS_REST_URL`.
    - REST API Token: Set as `UPSTASH_REDIS_REST_TOKEN`.
 3. **Vercel Project Setup:**
@@ -56,6 +58,7 @@ For complete step-by-step setup, see [FREE_TIER_DEPLOYMENT.md](./FREE_TIER_DEPLO
    - Function region: `fra1` (Frankfurt).
    - Framework preset: Next.js.
    - Build command: `pnpm build` (triggers `postinstall: prisma generate`).
+   - Limits: 1,000,000 invocations/month, 100 GB Fast Data Transfer, strictly non-commercial.
 4. **Environment Variables on Vercel:**
    - `NODE_ENV=production`
    - `NEXT_PUBLIC_APP_URL=https://<your-subdomain>.vercel.app`
@@ -63,13 +66,17 @@ For complete step-by-step setup, see [FREE_TIER_DEPLOYMENT.md](./FREE_TIER_DEPLO
    - `DATABASE_URL` (pooled)
    - `DIRECT_URL` (direct)
    - `SESSION_SECRET` (64 hex characters)
-   - `MODERATOR_TOKEN` (32+ characters)
-   - `MODERATOR_UNSENT_IDS=@steward_primary,@ops_lead`
+   - `MODERATOR_TOKEN` (32+ characters, server-side only)
+   - `MODERATOR_UNSENT_IDS` (leave empty initially until first steward registers; e.g. `@steward_alex_9f3b`)
    - `RATE_LIMIT_LOG_SECRET` (64 hex characters — min 32 bytes entropy)
    - `UPSTASH_REDIS_REST_URL`
    - `UPSTASH_REDIS_REST_TOKEN`
-5. **Database Migration Deployment:**
-   - Run locally against Neon `DIRECT_URL`:
+5. **Database Migration Safety & Deployment:**
+   - **Check migration files first:** Review all pending `migration.sql` files for destructive statements (`DROP`, `TRUNCATE`). Note: `prisma migrate deploy` executes raw SQL and does NOT protect against destructive queries inside migration files.
+   - **Never run `prisma db push` or `prisma migrate reset` in production.**
+   - Ensure the initial target database is freshly created and completely empty before applying `0_init`.
+   - Take a `pg_dump` snapshot before applying changes to any database with data.
+   - Run locally against Neon direct port 5432 (`DIRECT_URL`):
      ```bash
      DIRECT_URL="..." DATABASE_URL="..." pnpm prisma migrate deploy
      ```
@@ -123,4 +130,4 @@ Once deployed to `https://<your-subdomain>.vercel.app`:
    Must return HTTP 200 with `status: "healthy"`, `checks.database: "connected"`, `checks.rateLimiter.reachable: true`.
 
 2. **Verify Fail-Closed Protection:**
-   If Upstash Redis exceeds its 10,000 daily free commands, the API immediately responds with HTTP 503 (`SERVICE_UNAVAILABLE`), safely protecting user data without failing open or incurring charges.
+   If Upstash Redis exceeds its 500,000 monthly free commands, the API immediately responds with HTTP 503 (`SERVICE_UNAVAILABLE`), safely protecting user data without failing open or incurring charges.

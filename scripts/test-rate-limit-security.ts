@@ -75,6 +75,47 @@ async function runRateLimiterSecurityTests() {
     );
 
     // -------------------------------------------------------------------------
+    // Test 2b: Upstash provider quota exhaustion (500k monthly commands exceeded) in production
+    // -------------------------------------------------------------------------
+    console.log("\nTest 2b: Upstash provider quota exhaustion in production (Fail-Closed)");
+    process.env.UPSTASH_REDIS_REST_URL = "https://quota-exhausted.upstash.io";
+    process.env.UPSTASH_REDIS_REST_TOKEN = "AXtokenQuotaExhausted1234567890";
+    resetRedisClient();
+
+    const originalFetch = global.fetch;
+    try {
+      // Mock global fetch to simulate Upstash returning a quota limit exceeded error
+      global.fetch = async () => {
+        return new Response(
+          JSON.stringify({
+            error: "ERR max monthly request limit exceeded. Upgrade to paid plan at https://console.upstash.com",
+          }),
+          {
+            status: 429,
+            headers: { "Content-Type": "application/json" },
+          }
+        );
+      };
+
+      const quotaExceededResult = await checkRateLimit("login:phone:+998901234567", 5, 60_000);
+      assert(
+        quotaExceededResult.allowed === false,
+        "2b.1: Upstash quota exhaustion refuses the action in production (allowed === false)"
+      );
+      assert(
+        quotaExceededResult.status === "service_unavailable",
+        "2b.2: Quota exhaustion returns status 'service_unavailable' (HTTP 503 equivalent)"
+      );
+      assert(
+        quotaExceededResult.error === "SERVICE_UNAVAILABLE",
+        "2b.3: Quota exhaustion returns error code 'SERVICE_UNAVAILABLE'"
+      );
+    } finally {
+      global.fetch = originalFetch;
+      resetRedisClient();
+    }
+
+    // -------------------------------------------------------------------------
     // Test 3: probeRedisConnectivity accurately distinguishes configured from reachable
     // -------------------------------------------------------------------------
     console.log("\nTest 3: probeRedisConnectivity accuracy");
