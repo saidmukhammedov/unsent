@@ -50,9 +50,10 @@ ENV PRISMA_CLI_QUERY_ENGINE_TYPE="binary"
 ENV PRISMA_CLIENT_ENGINE_TYPE="binary"
 RUN pnpm prisma generate
 
-# Build Next.js application in standalone mode
+# Build Next.js application in standalone mode for local container execution
 ENV NEXT_TELEMETRY_DISABLED=1
 ENV NODE_ENV=production
+ENV BUILD_STANDALONE=true
 RUN pnpm build
 
 # ------------------------------------------------------------------------------

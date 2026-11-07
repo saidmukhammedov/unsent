@@ -6,6 +6,7 @@
     "dev": "next dev",
     "build": "next build",
     "start": "next start",
+    "postinstall": "prisma generate",
     "lint": "eslint",
     "test": "tsx scripts/verify-milestone2.ts && tsx scripts/verify-milestone3.ts && tsx scripts/verify-milestone4.ts && tsx scripts/verify-milestone5.ts && tsx scripts/verify-milestone6.ts && tsx scripts/verify-milestone7.ts && tsx scripts/verify-milestone8.ts && tsx scripts/verify-milestone9.ts && tsx scripts/verify-http-integration.ts && tsx scripts/test-infra-verification.ts && tsx scripts/test-rate-limit-security.ts && tsx scripts/test-startup-validation.ts && tsx scripts/test-argon2-concurrency.ts",
     "test:m3": "tsx scripts/verify-milestone3.ts",

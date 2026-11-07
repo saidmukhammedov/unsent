@@ -11,6 +11,7 @@ export const envSchema = z.object({
   RATE_LIMIT_LOG_SECRET: z.string().optional(),
   PORT: z.string().optional().default("8080"),
   CLOUD_RUN_REGION: z.string().optional().default("europe-west3"),
+  VERCEL_REGION: z.string().optional(),
 });
 
 export type ValidatedEnv = z.infer<typeof envSchema>;

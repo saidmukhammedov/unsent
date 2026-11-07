@@ -47,7 +47,7 @@ export async function GET() {
   const responsePayload = {
     status: isHealthy ? "healthy" : "unhealthy",
     timestamp: new Date().toISOString(),
-    region: process.env.CLOUD_RUN_REGION || "europe-west3",
+    region: process.env.VERCEL_REGION || process.env.CLOUD_RUN_REGION || "fra1",
     uptimeSeconds: Math.floor(process.uptime()),
     checks: {
       database: dbStatus,
