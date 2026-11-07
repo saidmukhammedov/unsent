@@ -45,6 +45,7 @@ For complete step-by-step setup, see [FREE_TIER_DEPLOYMENT.md](./FREE_TIER_DEPLO
 ### Summary Checklist:
 1. **Neon PostgreSQL Free:**
    - Region: `Europe (Frankfurt) / aws-eu-central-1`
+   - Project: `plain-fire-46935664`, Branch: `production`
    - Pooled connection string (`port 6543`, `?pgbouncer=true`): Set as `DATABASE_URL`.
    - Direct connection string (`port 5432`): Set as `DIRECT_URL`.
    - Limits: 1 GB storage, 100 CU-hours/month, 5 GB egress/month, 6-hour PITR restore.
@@ -55,31 +56,31 @@ For complete step-by-step setup, see [FREE_TIER_DEPLOYMENT.md](./FREE_TIER_DEPLO
    - REST API Token: Set as `UPSTASH_REDIS_REST_TOKEN`.
 3. **Vercel Project Setup:**
    - Connect repository `saidmukhammedov/unsent`.
-   - Function region: `fra1` (Frankfurt).
+   - Function region setting: **Project Settings → Functions → Function Regions → Frankfurt, Germany (`fra1`)**.
    - Framework preset: Next.js.
    - Build command: `pnpm build` (triggers `postinstall: prisma generate`).
    - Limits: 1,000,000 invocations/month, 100 GB Fast Data Transfer, strictly non-commercial.
-4. **Environment Variables on Vercel:**
+4. **Environment Variables on Vercel (Scope: Production ONLY):**
+   - > [!IMPORTANT]
+     > All production database connection strings and secrets must be scoped to **Production ONLY**. Do not expose production credentials to Preview deployments until separate staging infrastructure is provisioned.
    - `NODE_ENV=production`
    - `NEXT_PUBLIC_APP_URL=https://<your-subdomain>.vercel.app`
-   - `VERCEL_REGION=fra1`
+   - `VERCEL_REGION=fra1` *(Diagnostic label for `/api/health`; physical placement is configured in Functions dashboard)*
    - `DATABASE_URL` (pooled)
    - `DIRECT_URL` (direct)
-   - `SESSION_SECRET` (64 hex characters)
-   - `MODERATOR_TOKEN` (32+ characters, server-side only)
+   - `SESSION_SECRET` (64 hex characters — generate and save individually)
+   - `MODERATOR_TOKEN` (64 hex characters — generate and save individually)
    - `MODERATOR_UNSENT_IDS` (leave empty initially until first steward registers; e.g. `@steward_alex_9f3b`)
-   - `RATE_LIMIT_LOG_SECRET` (64 hex characters — min 32 bytes entropy)
+   - `RATE_LIMIT_LOG_SECRET` (64 hex characters — generate and save individually)
    - `UPSTASH_REDIS_REST_URL`
    - `UPSTASH_REDIS_REST_TOKEN`
-5. **Database Migration Safety & Deployment:**
-   - **Check migration files first:** Review all pending `migration.sql` files for destructive statements (`DROP`, `TRUNCATE`). Note: `prisma migrate deploy` executes raw SQL and does NOT protect against destructive queries inside migration files.
+5. **Database Migration Status:**
+   - Migration `0_init` is already applied and verified against Neon production.
+   - The Vercel build does not execute migrations.
    - **Never run `prisma db push` or `prisma migrate reset` in production.**
-   - Ensure the initial target database is freshly created and completely empty before applying `0_init`.
-   - Take a `pg_dump` snapshot before applying changes to any database with data.
-   - Run locally against Neon direct port 5432 (`DIRECT_URL`):
-     ```bash
-     DIRECT_URL="..." DATABASE_URL="..." pnpm prisma migrate deploy
-     ```
+6. **Pre-Launch Operational Precondition:**
+   - First-admin account registration and role promotion (`UPDATE users SET role = 'ADMIN' WHERE unsent_id = '...'`) is a **mandatory prerequisite** before opening or publicizing public Orbit submissions.
+   - Moderation dashboard (`/moderation`), report dismissal, and letter removal workflows must be validated by the steward first.
 
 ---
 
@@ -127,7 +128,10 @@ Once deployed to `https://<your-subdomain>.vercel.app`:
    ```bash
    curl -i https://<your-subdomain>.vercel.app/api/health
    ```
-   Must return HTTP 200 with `status: "healthy"`, `checks.database: "connected"`, `checks.rateLimiter.reachable: true`.
+   Must return HTTP 200 with `status: "healthy"`, `checks.database: "connected"`, `checks.rateLimiter.reachable: true`. Real-world latency is observed via `latencyMs`.
 
-2. **Verify Fail-Closed Protection:**
+2. **Verify Native Argon2 Runtime Execution:**
+   Complete a live registration request to confirm native `argon2` compiles and executes without C++ addon binary errors on Vercel's Amazon Linux 2023 / Node 22 environment.
+
+3. **Verify Fail-Closed Protection:**
    If Upstash Redis exceeds its 500,000 monthly free commands, the API immediately responds with HTTP 503 (`SERVICE_UNAVAILABLE`), safely protecting user data without failing open or incurring charges.

@@ -3,7 +3,7 @@
 **Approved Production Architecture:** Vercel Hobby + Neon Serverless PostgreSQL Free + Upstash Redis Free  
 **Deployment Cost:** Exactly **$0.00** — No credit cards, no paid upgrades, no usage-based billing, no surprise fees.  
 **Target Region:** Frankfurt (`fra1` / `eu-central-1`)  
-**Runtime:** Native Next.js 16 Serverless on Vercel Node.js 22 LTS  
+**Runtime:** Native Next.js 16 Serverless on Vercel Node.js 22 LTS (Amazon Linux 2023)  
 **Security Standard:** Zero-Trust, Encrypted Identifiers, Native Argon2id, Ephemeral Anonymous Sessions, Fail-Closed Distributed Rate Limiting.
 
 ---
@@ -51,19 +51,24 @@ The codebase has been verified for compatibility with Vercel serverless executio
    - On Vercel, Next.js natively builds and packages serverless function lambdas and edge assets.
    - [`next.config.ts`](file:///C:/Users/hp/.gemini/antigravity/scratch/unsent/next.config.ts) was updated so that `output: "standalone"` is only activated if `BUILD_STANDALONE="true"` is set for custom Docker builds, allowing native Vercel serverless packaging without conflict.
 2. **Prisma Client Generation:**
-   - [`package.json`](file:///C:/Users/hp/.gemini/antigravity/scratch/unsent/package.json) contains `"postinstall": "prisma generate"`. During Vercel's automated build phase, `@prisma/client` is automatically compiled and pinned to the serverless function layer.
-3. **Native Argon2id Password Hashing:**
-   - Argon2 v0.45.2 compiles via `node-gyp` during Vercel build or uses Linux glibc prebuilts matching AWS Lambda / Amazon Linux 2023.
-   - Argon2id parameters (`m=65536` [64 MB], `t=3`, `p=4`) consume only ~6% of Vercel's 1024 MB serverless function RAM.
-   - The semaphore in [`src/lib/auth/password.ts`](file:///C:/Users/hp/.gemini/antigravity/scratch/unsent/src/lib/auth/password.ts) bounds concurrency to 2 simultaneous operations with a queue of 10, preventing CPU context thrashing and timeout stalls.
+   - [`package.json`](file:///C:/Users/hp/.gemini/antigravity/scratch/unsent/package.json) contains `"postinstall": "prisma generate"`. During Vercel's automated install phase, `@prisma/client` is automatically compiled and pinned to the serverless function layer.
+3. **Native Argon2id Password Hashing & Runtime Verification:**
+   - Package: `argon2` v0.45.2.
+   - Vercel functions execute on **Node.js 22 LTS inside Amazon Linux 2023 (`x86_64` with glibc 2.34)**.
+   - *Verification Constraint:* Local Windows builds confirm TypeScript, bundler, and syntax compatibility, but **do not verify native C++ addon execution inside Vercel's Linux container**.
+   - Before opening registration to public users, native Argon2 hash and verify execution must be explicitly confirmed via a live test registration on the deployed Vercel URL (see [Section 7](#7-verifying-the-live-deployment)).
+   - Memory parameters (`m=65536` [64 MB], `t=3`, `p=4`) consume only ~6.25% of Vercel's 1024 MB function RAM.
+   - The semaphore in [`src/lib/auth/password.ts`](file:///C:/Users/hp/.gemini/antigravity/scratch/unsent/src/lib/auth/password.ts) bounds concurrency to 2 simultaneous operations with a queue of 10, preventing CPU context thrashing.
 4. **Session Cookies Behind Vercel Edge Proxy:**
    - Vercel automatically terminates TLS at the edge. The application uses `cookies()` with `httpOnly: true, secure: true, sameSite: "lax", path: "/"`. Sessions remain persistent and secure over `https://*.vercel.app`.
 5. **Stateless Operation (Zero Local Filesystem Dependency):**
    - No user content, letters, notes, or sessions are written to the local disk. Everything is persisted in PostgreSQL or Upstash Redis. Archive JSON export is generated in-memory and streamed directly over HTTP.
 6. **Neon Scale-to-Zero & Cold Starts:**
-   - In Neon Free, compute instances pause after 5 minutes of inactivity. When a new visitor accesses the app, Neon wakes up with a cold-start delay of 500ms to 2000ms. Prisma Client automatically waits for the TCP socket and resumes operations.
-7. **Rate Limiter Failure Mode & Fail-Closed Behavior:**
-   - [`src/lib/rate-limit.ts`](file:///C:/Users/hp/.gemini/antigravity/scratch/unsent/src/lib/rate-limit.ts) enforces a strict fail-closed policy in production. If Upstash Redis credentials are missing, network connectivity is lost, or the Upstash monthly quota (500k commands) is exhausted, the rate limiter refuses the operation with `status: "service_unavailable", error: "SERVICE_UNAVAILABLE"`, translating to an HTTP 503 response. It never fails open or silently falls back to unshared in-memory state in production.
+   - In Neon Free, compute instances pause after 5 minutes of inactivity. When a new visitor accesses the app, Neon wakes up with a cold-start delay (typically 500ms to 2000ms). Prisma Client automatically waits for the TCP socket and resumes operations.
+7. **Distributed Rate Limiter Across Multiple Serverless Instances:**
+   - Rate limiting state is hosted centrally in Upstash Redis (Frankfurt) via HTTPS REST calls.
+   - All serverless function instances share the exact same distributed sliding-window counter in Redis, preventing in-memory counter drift or synchronization issues across ephemeral serverless containers.
+   - [`src/lib/rate-limit.ts`](file:///C:/Users/hp/.gemini/antigravity/scratch/unsent/src/lib/rate-limit.ts) enforces strict fail-closed behavior in production: if Upstash is unreachable or quota exhausted, protected operations return HTTP 503 (`SERVICE_UNAVAILABLE`).
 
 ---
 
@@ -71,26 +76,15 @@ The codebase has been verified for compatibility with Vercel serverless executio
 
 ### Step 1: Provision Neon PostgreSQL Free
 1. Sign up at [neon.tech](https://neon.tech/) using GitHub or Google (no credit card required).
-2. Create a new project:
-   - **Name:** `unsent-prod`
-   - **Region:** `Europe (Frankfurt) / aws-eu-central-1`
-   - **Postgres Version:** 16
-3. Navigate to **Dashboard > Connection Details**:
-   - Check **Connection Pooling**.
-   - Copy the connection string as `DATABASE_URL` (uses port `6543` and `-pooler` host with `?sslmode=require&pgbouncer=true`).
-   - Uncheck **Connection Pooling** (or switch to Direct connection).
-   - Copy the direct connection string as `DIRECT_URL` (uses port `5432` with `?sslmode=require`).
+2. Create project `unsent-prod` in region `Europe (Frankfurt) / aws-eu-central-1`.
+3. Obtain connection strings:
+   - Pooled connection (`port 6543`, `?sslmode=require&pgbouncer=true`): Set as `DATABASE_URL`.
+   - Direct connection (`port 5432`, `?sslmode=require`): Set as `DIRECT_URL`.
 
 ### Step 2: Provision Upstash Redis Free
 1. Sign up at [upstash.com](https://upstash.com/) using GitHub or Google (no credit card required).
-2. Click **Create Database**:
-   - **Name:** `unsent-ratelimit`
-   - **Type:** Regional
-   - **Region:** `eu-central-1 (Frankfurt)`
-   - **Primary Plan:** Free ($0 — 500,000 commands/month, 256 MB storage)
-3. Under the **Details** page, locate **REST API**:
-   - Copy `UPSTASH_REDIS_REST_URL`.
-   - Copy `UPSTASH_REDIS_REST_TOKEN`.
+2. Create regional database in `eu-central-1 (Frankfurt)` on the Free plan ($0).
+3. Copy `UPSTASH_REDIS_REST_URL` and `UPSTASH_REDIS_REST_TOKEN`.
 
 ### Step 3: Configure Vercel Project
 1. Sign up or log in at [vercel.com](https://vercel.com/) with GitHub.
@@ -100,139 +94,108 @@ The codebase has been verified for compatibility with Vercel serverless executio
    - **Root Directory:** `./`
    - **Build Command:** `pnpm build` (default)
    - **Install Command:** `pnpm install` (default)
-4. Set **Serverless Function Region**:
-   - In **Settings > Functions**, set Function Region to **Frankfurt, Germany (`fra1`)** to co-locate compute with Neon and Upstash.
+4. Set **Physical Serverless Function Region:**
+   - In **Project Settings > Functions > Function Regions**, select **Frankfurt, Germany (`fra1`)**.
+   - > [!IMPORTANT]
+     > The physical execution region is configured in the Vercel dashboard under **Project Settings > Functions**. Setting the environment variable `VERCEL_REGION=fra1` does **NOT** configure function placement; it is purely an informational diagnostic label read by the application for `/api/health`.
 
 ---
 
-## 4. Production Environment Variables Configuration
-
-In **Vercel Project Settings > Environment Variables**, configure the following variables for **Production** and **Preview**:
-
-| Variable Name | Environment | Value / Generation Instructions |
-| :--- | :--- | :--- |
-| `NODE_ENV` | Production, Preview | `production` |
-| `NEXT_PUBLIC_APP_URL` | Production | `https://<your-project-subdomain>.vercel.app` |
-| `VERCEL_REGION` | Production, Preview | `fra1` |
-| `DATABASE_URL` | Production, Preview | Pooled Neon connection string (`...-pooler...:6543/...`) |
-| `DIRECT_URL` | Production, Preview | Direct unpooled Neon connection string (`...:5432/...`) |
-| `SESSION_SECRET` | Production, Preview | 64-char random hex string (`openssl rand -hex 32`) |
-| `MODERATOR_TOKEN` | Production, Preview | 32+ char secret for programmatic administrative CLI scripts/testing (`openssl rand -hex 24`). Never expose to frontend. |
-| `MODERATOR_UNSENT_IDS` | Production, Preview | Comma-separated list of real registered UNSENT IDs (leave empty initially until first steward registers; e.g. `@steward_alex_9f3b`). |
-| `RATE_LIMIT_LOG_SECRET` | Production, Preview | 64-char random hex string (`openssl rand -hex 32`) — Min 32 bytes entropy. Keyed HMAC salt. |
-| `UPSTASH_REDIS_REST_URL` | Production, Preview | Upstash REST URL from Step 2 |
-| `UPSTASH_REDIS_REST_TOKEN`| Production, Preview | Upstash REST Token from Step 2 |
-
-> [!WARNING]
-> **No Placeholder Moderator IDs:**  
-> Previous references to `@steward_primary,@ops_lead` are purely dummy placeholders. They do not exist in the database and do not grant access to any account. Do not put dummy handles in `MODERATOR_UNSENT_IDS`. See [Section 6](#6-provisioning-the-first-moderator-account-securely) for the secure provisioning procedure.
-
-> [!TIP]
-> **Generating Secrets Locally:**
-> Generate cryptographic secrets on your local workstation without printing them to shared shell history:
-> ```bash
-> # Linux / macOS:
-> openssl rand -hex 32 | tr -d '\n' | pbcopy   # Copies 64-char hex directly to clipboard
->
-> # Windows PowerShell:
-> $b = New-Object byte[] 32; [Security.Cryptography.RandomNumberGenerator]::Create().GetBytes($b); ([BitConverter]::ToString($b) -replace '-').ToLower() | Set-Clipboard
-> ```
-> Paste directly into Vercel's Environment Variables dashboard.
-
----
-
-## 5. Database Migration Execution & Safety Protocol
+## 4. Production Environment Variables & Environment Separation
 
 > [!CAUTION]
-> **CRITICAL DATABASE MIGRATION SAFETY NOTICE:**
-> - **The claim that `prisma migrate deploy` never drops tables or columns is FALSE.**
->   `prisma migrate deploy` executes the exact, unvetted raw SQL statements contained in pending migration files (`prisma/migrations/*/migration.sql`). If a migration file contains `DROP TABLE`, `DROP COLUMN`, `TRUNCATE`, or destructive type alterations, `prisma migrate deploy` **will execute them unconditionally** and permanently destroy data.
-> - **Never run `pnpm prisma db push` against production:** `db push` bypasses version-controlled migration files and attempts to synchronize schema drift directly. If drift exists or `--accept-data-loss` is used, columns, tables, and data are silently truncated or dropped.
-> - **Never run `pnpm prisma migrate reset` against production:** `migrate reset` drops the entire database schema, recreates it from scratch, and deletes 100% of user data.
-> - **Initial deployment requirement:** The initial deployment must target a newly created, completely empty database. You must verify that no tables exist before applying `0_init`. Applying `0_init` against an existing database will fail or conflict.
-> - **Never execute migrations against an unknown or existing database** without inspecting both the database schema and the `_prisma_migrations` history table.
+> **STRICT ENVIRONMENT SEPARATION (PRODUCTION ONLY):**  
+> All production database connection strings (`DATABASE_URL`, `DIRECT_URL`) and production secrets (`SESSION_SECRET`, `RATE_LIMIT_LOG_SECRET`, `MODERATOR_TOKEN`, `UPSTASH_*`) must be configured for **Production ONLY** in the Vercel dashboard.  
+> - **Uncheck "Preview" and "Development"** when adding these variables to Vercel.  
+> - Preview deployments must **NOT** access the production Neon database or production Upstash Redis instance.  
+> - Do not use Preview deployments for testing until separate, isolated staging infrastructure (e.g. a separate Neon branch and staging Redis) is provisioned.
 
-### Pre-Migration Safety Checklist
+In **Vercel Project Settings > Environment Variables**, configure the following variables for **Production**:
 
-Before running any migration command against production Neon, complete every item in this checklist:
+| Variable Name | Environment Scope | Value / Source Instructions |
+| :--- | :--- | :--- |
+| `NODE_ENV` | **Production only** | `production` (Automatically set by Vercel for Production builds) |
+| `NEXT_PUBLIC_APP_URL` | **Production only** | `https://<your-project-subdomain>.vercel.app` |
+| `VERCEL_REGION` | **Production only** | `fra1` (Diagnostic label for `/api/health`) |
+| `DATABASE_URL` | **Production only** | Pooled Neon connection string (`...-pooler...:6543/neondb?sslmode=require`) |
+| `DIRECT_URL` | **Production only** | Direct unpooled Neon connection string (`...:5432/neondb?sslmode=require`) |
+| `SESSION_SECRET` | **Production only** | 64-char random hex string (Generate via PowerShell Step 1 below) |
+| `RATE_LIMIT_LOG_SECRET` | **Production only** | 64-char random hex string — Dedicated HMAC-SHA256 salt (Generate via PowerShell Step 2 below) |
+| `MODERATOR_TOKEN` | **Production only** | 64-char random hex string — Server-side secret for administrative tools (Generate via PowerShell Step 3 below) |
+| `MODERATOR_UNSENT_IDS` | **Production only** | Leave empty initially (`""`). Populate after registering the first steward account. |
+| `UPSTASH_REDIS_REST_URL` | **Production only** | Upstash REST URL (`https://deciding-marlin-194640.upstash.io`) |
+| `UPSTASH_REDIS_REST_TOKEN`| **Production only** | Upstash REST Token |
 
-1. [ ] **Target URL Verification:** Verify that `DIRECT_URL` and `DATABASE_URL` point to the correct production database instance and branch.
-2. [ ] **Migration SQL Inspection:** Open every pending file in `prisma/migrations/*/migration.sql`. Review every line. Verify there are no unintentional `DROP TABLE`, `DROP COLUMN`, `TRUNCATE`, or destructive `ALTER` statements.
-3. [ ] **Status Inspection (Dry Run):** Run `pnpm prisma migrate status` against `DIRECT_URL` to identify unapplied migrations without executing any DDL.
-4. [ ] **Pre-Migration Snapshot:** For any database with existing data, perform an explicit manual snapshot using `pg_dump` before applying changes:
-   ```bash
-   pg_dump -d "$DIRECT_URL" -F c -b -v -f "unsent_pre_migration_$(date +%Y%m%d_%H%M%S).dump"
+### Safe Sequential Secret Generation Instructions
+
+> [!WARNING]
+> **Sequential Generation Warning:**  
+> The PowerShell commands below pipe directly to your clipboard. Because each command overwrites the clipboard, **run and paste each command one at a time**:
+
+1. **Generate `SESSION_SECRET`:**
+   ```powershell
+   $b = New-Object byte[] 32; [Security.Cryptography.RandomNumberGenerator]::Create().GetBytes($b); ([BitConverter]::ToString($b) -replace '-').ToLower() | Set-Clipboard
    ```
-   *(Do not rely exclusively on Neon Free's 6-hour PITR window for disaster recovery).*
-5. [ ] **Fresh Database Verification (Initial Setup Only):** If applying `0_init` for the first time, verify that the database is freshly provisioned and completely empty:
-   ```sql
-   SELECT table_name FROM information_schema.tables WHERE table_schema = 'public';
-   -- Must return 0 rows
+   *Action:* Paste into Vercel Environment Variables dashboard as `SESSION_SECRET` for **Production only** and click Save.
+
+2. **Generate `RATE_LIMIT_LOG_SECRET`:**
+   ```powershell
+   $b = New-Object byte[] 32; [Security.Cryptography.RandomNumberGenerator]::Create().GetBytes($b); ([BitConverter]::ToString($b) -replace '-').ToLower() | Set-Clipboard
    ```
-6. [ ] **Direct Connection Only:** Always apply migrations using the direct port `5432` unpooled connection string (`DIRECT_URL`). Connection poolers (PgBouncer port `6543`) do not support session-level advisory locks required by Prisma Migrate.
-7. [ ] **Post-Migration Verification:** After execution, run `pnpm prisma migrate status` to confirm that all migrations are recorded in `_prisma_migrations` with valid checksums and timestamps.
+   *Action:* Paste into Vercel Environment Variables dashboard as `RATE_LIMIT_LOG_SECRET` for **Production only** and click Save. *(Must NOT be identical to `SESSION_SECRET`)*.
 
-### Migration Execution Commands
-
-From your authenticated developer workstation:
-
-```bash
-# Linux / macOS:
-DIRECT_URL="postgresql://user:pass@ep-xyz.eu-central-1.aws.neon.tech/unsent?sslmode=require" \
-DATABASE_URL="postgresql://user:pass@ep-xyz.eu-central-1.aws.neon.tech/unsent?sslmode=require" \
-pnpm prisma migrate deploy
-```
-
-On Windows PowerShell:
-```powershell
-$env:DIRECT_URL="postgresql://user:pass@ep-xyz.eu-central-1.aws.neon.tech/unsent?sslmode=require"
-$env:DATABASE_URL="postgresql://user:pass@ep-xyz.eu-central-1.aws.neon.tech/unsent?sslmode=require"
-pnpm prisma migrate deploy
-```
+3. **Generate `MODERATOR_TOKEN`:**
+   ```powershell
+   $b = New-Object byte[] 32; [Security.Cryptography.RandomNumberGenerator]::Create().GetBytes($b); ([BitConverter]::ToString($b) -replace '-').ToLower() | Set-Clipboard
+   ```
+   *Action:* Paste into Vercel Environment Variables dashboard as `MODERATOR_TOKEN` for **Production only** and click Save.
 
 ---
 
-## 6. Provisioning the First Moderator Account Securely
+## 5. Database Migration Safety & Deployment
 
-UNSENT does not include hardcoded administrator accounts, default passwords, or backdoor credentials. All steward access is verified through [`src/lib/auth/moderator.ts`](file:///C:/Users/hp/.gemini/antigravity/scratch/unsent/src/lib/auth/moderator.ts).
+The production database on Neon (`plain-fire-46935664`, branch `production`) has already applied migration `0_init`.
+
+> [!CAUTION]
+> **Database Safety Invariants:**
+> - **Never run `pnpm prisma db push` against production.**
+> - **Never run `pnpm prisma migrate reset` against production.**
+> - The Vercel build command is strictly `pnpm build`, which only generates the Prisma client. It does **NOT** run database migrations.
+> - If future migrations are created, review every SQL statement, take a manual `pg_dump` snapshot, and execute `pnpm prisma migrate deploy` locally against Neon `DIRECT_URL` before deploying application code.
+
+---
+
+## 6. Provisioning the First Moderator Account (Mandatory Precondition)
+
+> [!CRITICAL]
+> **MANDATORY PRECONDITION BEFORE PUBLIC ORBIT SUBMISSIONS:**  
+> First-admin registration and role promotion is an **explicit, mandatory prerequisite** before accepting public Orbit letter submissions or publicizing the service. Unrestricted public submissions must not be accepted until moderation and reporting workflows have been verified operational with a real steward account.
 
 ### Secure Moderator Provisioning Procedure:
 
 1. **Register a Standard Account via the Live Application:**
    - Visit the production site (`https://<your-project>.vercel.app`).
    - Create a session (anonymous visit).
-   - Navigate to `/register` (or `/login`) and register an account using a real phone number and strong password.
-   - Note the assigned permanent `unsentId` displayed in your Sanctuary or account profile (e.g. `@steward_alex_9f3b`).
+   - Navigate to `/register` and register an account using a real phone number and strong password.
+   - Note the assigned permanent `unsentId` displayed in your Sanctuary (e.g. `@steward_alex_9f3b`).
 
-2. **Grant Moderator Privileges (Choose Method A or Method B):**
-
-   - **Method A (Recommended — Direct Database Role Promotion):**
-     Connect directly to the production Neon PostgreSQL database using the Neon Console SQL Editor or `psql` via `DIRECT_URL`:
+2. **Grant Moderator Privileges via Neon Console:**
+   - Connect to Neon PostgreSQL via Neon Console SQL Editor using `DIRECT_URL`:
      ```sql
-     -- Promote the registered user to ADMIN or MODERATOR role
      UPDATE users
      SET role = 'ADMIN'
      WHERE unsent_id = '@steward_alex_9f3b';
      ```
-     *Verification:*
+   - Verify role promotion:
      ```sql
      SELECT id, unsent_id, role, account_type FROM users WHERE unsent_id = '@steward_alex_9f3b';
      ```
-     This role is stored directly in the `UserRole` enum (`USER`, `MODERATOR`, `ADMIN`) in PostgreSQL and grants persistent steward access across all sessions.
 
-   - **Method B (Environment Variable Allowlist):**
-     In Vercel Project Settings > Environment Variables, set:
-     ```
-     MODERATOR_UNSENT_IDS="@steward_alex_9f3b"
-     ```
-     (Or a comma-separated list of registered IDs: `@steward_one,@steward_two`).  
-     Redeploy the application in Vercel to apply the updated environment variable.
-
-3. **Steward Security Invariants:**
-   - **Never grant privileges to unverified users:** Only promote explicitly trusted operator accounts.
-   - **Do not commit steward IDs:** Never hardcode personal steward handles in repository files.
-   - **No client exposure of tokens:** `MODERATOR_TOKEN` is strictly a server-side secret used for programmatic administrative scripts or automated integration test suites via the `x-moderator-token` or `Authorization: Bearer <token>` header. It must never be included in client bundles (`NEXT_PUBLIC_*`).
-   - **Constant-time comparison:** All token checks in `src/lib/auth/moderator.ts` use `crypto.timingSafeEqual` with matched buffer lengths to eliminate timing side-channel attacks.
+3. **Verify Moderation Dashboard:**
+   - Log in to `https://<your-project>.vercel.app` with the promoted account.
+   - Access `/moderation` and verify that the stewardship dashboard loads.
+   - Test reporting and moderation workflows (dismiss, remove) on a test letter.
+   - Only after this verification gate passes should public Orbit submissions be enabled.
 
 ---
 
@@ -240,11 +203,11 @@ UNSENT does not include hardcoded administrator accounts, default passwords, or 
 
 Once Vercel finishes deploying to `https://<your-project>.vercel.app`:
 
-1. **Verify Health Endpoint:**
+1. **Verify Health Endpoint & Measure Real-World Latency:**
    ```bash
    curl -i https://<your-project>.vercel.app/api/health
    ```
-   *Expected Response:* `HTTP/2 200` with JSON body:
+   *Expected Response:* `HTTP/2 200 OK` with JSON body:
    ```json
    {
      "status": "healthy",
@@ -262,16 +225,22 @@ Once Vercel finishes deploying to `https://<your-project>.vercel.app`:
      "latencyMs": 42
    }
    ```
-2. **Verify Ephemeral Anonymous Session:**
-   - Visit `https://<your-project>.vercel.app`.
+   > [!NOTE]
+   > **Latency Verification:** Real-world network and compute latency between Vercel Serverless (`fra1`), Neon, and Upstash is unverified until measured on the live service via the `latencyMs` field.
+
+2. **Verify Native Argon2 Execution on Vercel Runtime:**
+   - Navigate to `/register` on the live Vercel domain.
+   - Complete a registration with a test phone number and password.
+   - Confirm that the request succeeds (HTTP 200), that session cookies are set, and that no native binary load errors occur in Vercel function runtime logs.
+
+3. **Verify Ephemeral Anonymous Session:**
+   - Visit `https://<your-project>.vercel.app` in an incognito window.
    - Open browser Developer Tools > Application > Cookies.
    - Confirm `unsent_session` cookie is present with `HttpOnly`, `Secure`, and `SameSite=Lax`.
-3. **Verify Letter Creation:**
-   - Compose a private letter in the UI.
-   - Confirm it is persisted in your Sanctuary without errors.
-4. **Verify Moderator Access:**
-   - Log in with the promoted steward account from Section 6.
-   - Access `/moderation` and verify that the stewardship dashboard loads successfully.
+
+4. **Verify Moderator Access & Precondition Gate:**
+   - Follow Section 6 to register and promote the first steward account.
+   - Verify `/moderation` access and workflow operations.
 
 ---
 
