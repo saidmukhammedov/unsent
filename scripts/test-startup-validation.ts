@@ -173,6 +173,33 @@ async function runStartupValidationTests() {
   assert(threwLogSecret, "5b.2: Production startup aborted when RATE_LIMIT_LOG_SECRET is missing");
 
   // -------------------------------------------------------------------------
+  // Test 5c: Insufficient entropy (< 32 chars) for RATE_LIMIT_LOG_SECRET in production prevents startup
+  // -------------------------------------------------------------------------
+  console.log("\nTest 5c: Insufficient entropy for RATE_LIMIT_LOG_SECRET in production prevents startup");
+  resetCachedEnv();
+  let threwShortLogSecret = false;
+  try {
+    validateEnvironment(
+      {
+        ...validBase,
+        NODE_ENV: "production",
+        DIRECT_URL: "postgresql://postgres:password@localhost:5432/unsent_dev",
+        UPSTASH_REDIS_REST_URL: "https://example.upstash.io",
+        UPSTASH_REDIS_REST_TOKEN: "AXtoken1234567890",
+        RATE_LIMIT_LOG_SECRET: "short-secret-only-25chars",
+      },
+      true
+    );
+  } catch (err: unknown) {
+    threwShortLogSecret = true;
+    assert(
+      String(err).includes("RATE_LIMIT_LOG_SECRET (min 32 characters / 32 bytes entropy)"),
+      "5c.1: Error message explicitly rejects RATE_LIMIT_LOG_SECRET with less than 32 characters of entropy"
+    );
+  }
+  assert(threwShortLogSecret, "5c.2: Production startup aborted when RATE_LIMIT_LOG_SECRET has insufficient entropy");
+
+  // -------------------------------------------------------------------------
   // Test 6: Development mode remains usable without production-only credentials
   // -------------------------------------------------------------------------
   console.log("\nTest 6: Development mode operates cleanly without production credentials");

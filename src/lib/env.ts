@@ -55,7 +55,7 @@ export function validateEnvironment(
     if (!env.DIRECT_URL || env.DIRECT_URL.trim() === "") missingProductionVars.push("DIRECT_URL");
     if (!env.UPSTASH_REDIS_REST_URL || env.UPSTASH_REDIS_REST_URL.trim() === "") missingProductionVars.push("UPSTASH_REDIS_REST_URL");
     if (!env.UPSTASH_REDIS_REST_TOKEN || env.UPSTASH_REDIS_REST_TOKEN.trim() === "") missingProductionVars.push("UPSTASH_REDIS_REST_TOKEN");
-    if (!env.RATE_LIMIT_LOG_SECRET || env.RATE_LIMIT_LOG_SECRET.trim().length < 16) missingProductionVars.push("RATE_LIMIT_LOG_SECRET (min 16 chars)");
+    if (!env.RATE_LIMIT_LOG_SECRET || env.RATE_LIMIT_LOG_SECRET.trim().length < 32) missingProductionVars.push("RATE_LIMIT_LOG_SECRET (min 32 characters / 32 bytes entropy)");
 
     if (missingProductionVars.length > 0) {
       const msg = `[CRITICAL_ENV_VALIDATION_ERROR] The following required production environment variables are missing: ${missingProductionVars.join(", ")}`;

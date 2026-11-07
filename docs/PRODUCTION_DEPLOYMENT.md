@@ -76,18 +76,29 @@ gcloud artifacts repositories create unsent-repo \
 ```
 
 ### 3.4 Store Secrets in GCP Secret Manager
-Create each secret in Secret Manager:
+Create each secret in Secret Manager.
+
+> [!IMPORTANT]
+> **Cryptographic Entropy & Silent Generation:**
+> Application secrets must possess cryptographically secure random entropy and be generated without printing to stdout, terminal logs, or saving to `.env` / shell history (`.bash_history`).
+> Piping directly from `openssl` into `gcloud secrets create ... --data-file=-` streams entropy via stdin without terminal display or shell argument expansion.
+
 ```bash
-# Database strings
+# Database strings (from Neon console)
 echo -n "postgresql://..." | gcloud secrets create unsent-database-url --data-file=- --replication-policy=automatic
 echo -n "postgresql://..." | gcloud secrets create unsent-direct-url --data-file=- --replication-policy=automatic
 
-# Application secrets
-echo -n "$(openssl rand -hex 32)" | gcloud secrets create unsent-session-secret --data-file=- --replication-policy=automatic
-echo -n "$(openssl rand -hex 24)" | gcloud secrets create unsent-moderator-token --data-file=- --replication-policy=automatic
-echo -n "$(openssl rand -hex 32)" | gcloud secrets create unsent-rate-limit-log-secret --data-file=- --replication-policy=automatic
+# Application secrets (generated securely via stdin without terminal echo)
+# RATE_LIMIT_LOG_SECRET: 32 bytes (256 bits) of entropy (64 hex characters)
+openssl rand -hex 32 | tr -d '\n' | gcloud secrets create unsent-rate-limit-log-secret --data-file=- --replication-policy=automatic
 
-# Upstash credentials
+# SESSION_SECRET: 32 bytes of entropy (64 hex characters)
+openssl rand -hex 32 | tr -d '\n' | gcloud secrets create unsent-session-secret --data-file=- --replication-policy=automatic
+
+# MODERATOR_TOKEN: 24 bytes of entropy (48 hex characters)
+openssl rand -hex 24 | tr -d '\n' | gcloud secrets create unsent-moderator-token --data-file=- --replication-policy=automatic
+
+# Upstash credentials (from Upstash console)
 echo -n "https://..." | gcloud secrets create unsent-upstash-url --data-file=- --replication-policy=automatic
 echo -n "..." | gcloud secrets create unsent-upstash-token --data-file=- --replication-policy=automatic
 ```
@@ -150,7 +161,7 @@ In corporate CI/CD pipelines, execute migrations as a separate step before deplo
 # cloudbuild.yaml snippet
 steps:
   # Step 1: Run database migrations against direct Neon endpoint
-  - name: 'node:22-slim'
+  - name: 'node:22-bookworm-slim'
     id: 'prisma-migrate'
     entrypoint: 'sh'
     args:
@@ -205,15 +216,7 @@ gcloud run deploy unsent-web \
     --max-instances=20 \
     --cpu-boost \
     --port=8080 \
-    --startup-probe-path=/api/health \
-    --startup-probe-initial-delay=5s \
-    --startup-probe-period=10s \
-    --startup-probe-timeout=3s \
-    --startup-probe-failure-threshold=6 \
-    --liveness-probe-path=/api/health \
-    --liveness-probe-period=30s \
-    --liveness-probe-timeout=3s \
-    --liveness-probe-failure-threshold=3 \
+    --startup-probe="httpGet.path=/api/health,httpGet.port=8080,initialDelaySeconds=5,timeoutSeconds=3,periodSeconds=10,failureThreshold=6" \
     --set-env-vars="NODE_ENV=production,CLOUD_RUN_REGION=europe-west3,NEXT_PUBLIC_APP_URL=https://unsent.space" \
     --set-secrets="\
 DATABASE_URL=unsent-database-url:latest,\
@@ -227,16 +230,36 @@ UPSTASH_REDIS_REST_TOKEN=unsent-upstash-token:latest"
 
 ### 5.4 Cloud Run Health Probe Architecture & Operational Cautions
 
-#### How Cloud Run Uses `/api/health`
-1. **No Automatic Discovery:** Cloud Run does **not** automatically probe `/api/health` or execute the Dockerfile `HEALTHCHECK` directive. Probes must be configured explicitly on deployment via `--startup-probe-...` and `--liveness-probe-...` flags.
-2. **Startup Probe:**
-   - Evaluated during container boot.
-   - Traffic routing is withheld until `/api/health` returns HTTP 200.
-   - Allows up to 65 seconds ($5\text{s initial delay} + 6 \times 10\text{s attempts}$) for Prisma connection pool establishment and Upstash ping verification before marking the container instance failed.
-3. **Liveness Probe & Restart Precautions:**
-   - Periodically queries `/api/health` every 30 seconds.
-   - Requires 3 consecutive HTTP 503 failures before Cloud Run triggers a container restart.
-   - **Crucial Limitation:** Because `/api/health` probes both PostgreSQL and Upstash Redis, a transient upstream cloud disruption (e.g., brief Neon compute resume or Upstash maintenance) will cause `/api/health` to return 503. If liveness probe thresholds are too tight (e.g. failure threshold 1 or period 5s), all running container instances could reboot simultaneously in a cascading restart storm. Setting `--liveness-probe-period=30s` with `--liveness-probe-failure-threshold=3` provides a 90-second buffer to absorb transient cloud network jitter.
+#### Correct Cloud Run Probe Syntax
+Cloud Run uses flat dot-notation `KEY=VALUE,...` syntax:
+- `--startup-probe=KEY=VALUE,...`
+- `--liveness-probe=KEY=VALUE,...`
+
+Flag arguments such as `--startup-probe-path` or `--startup-probe-initial-delay` are **not** supported by the `gcloud run deploy` CLI and will cause deployment command failure.
+
+#### 1. Startup Probe Configuration
+- **Parameter Breakdown:**
+  - `httpGet.path=/api/health`: Instructs Cloud Run to probe the HTTP endpoint `/api/health`.
+  - `httpGet.port=8080`: Directs the probe to container listening port 8080.
+  - `initialDelaySeconds=5`: Waits 5 seconds after container initialization before initiating the first probe.
+  - `timeoutSeconds=3`: Sets 3000ms timeout for the health check response.
+  - `periodSeconds=10`: Probes every 10 seconds during the startup phase.
+  - `failureThreshold=6`: Allows up to 6 consecutive attempts (up to 65 seconds total) before marking container startup as failed.
+- **Operational Value:** Traffic routing is strictly withheld until `/api/health` returns HTTP 200, guaranteeing that cold instances never receive user traffic before Prisma client initialization and startup environment validation have succeeded.
+
+#### 2. Liveness Probe Cautions & Cascading Restart Loop Prevention
+> [!WARNING]
+> **Avoid Aggressive Dependency-Based Liveness Probes in Serverless Environments:**
+> In our default deployment command above, `--liveness-probe` is intentionally omitted in favor of Google Cloud Run's default infrastructure-level container health checks.
+>
+> **The Risk of Cascading Restart Storms:**
+> Because `/api/health` probes both Neon PostgreSQL and Upstash Redis, any transient upstream cloud blip (such as a 3-second network routing retry or Upstash failover) causes `/api/health` to return HTTP 503.
+> If an aggressive HTTP liveness probe (e.g. failureThreshold=1 or 2, period=5s) is attached, Cloud Run will detect concurrent failures across **all running container instances at the exact same moment**. Cloud Run will then terminate and restart the entire fleet simultaneously, causing a total application outage and swamping the upstream database with simultaneous reconnection bursts during recovery.
+>
+> If your organization's security policy strictly mandates an HTTP liveness probe, use wide, conservative thresholds that allow sufficient time for transient upstream recovery without triggering container restarts:
+> ```bash
+> --liveness-probe="httpGet.path=/api/health,httpGet.port=8080,initialDelaySeconds=15,timeoutSeconds=3,periodSeconds=30,failureThreshold=5"
+> ```
 
 #### Internal Probe Isolation & Safety
 - **Bounded Latency:** `/api/health` bounds the PostgreSQL query (`SELECT 1`) and the Redis ping (`redis.ping()`) to 2000ms each using `Promise.race`.

@@ -253,6 +253,20 @@ async function runRateLimiterSecurityTests() {
       "7.6: checkRateLimit fails closed with 503 when RATE_LIMIT_LOG_SECRET is missing in production"
     );
 
+    // 7.7 Insufficient entropy (< 32 chars) rejected in production
+    process.env.RATE_LIMIT_LOG_SECRET = "short-secret-only-25chars";
+    let threwShortSecret = false;
+    try {
+      getSafeKeyCorrelation(testKey1);
+    } catch (err: unknown) {
+      threwShortSecret = true;
+      assert(
+        String(err).includes("min 32 characters"),
+        "7.7: Production mode throws when RATE_LIMIT_LOG_SECRET has less than 32 characters of entropy"
+      );
+    }
+    assert(threwShortSecret, "7.8: Short secrets (< 32 bytes entropy) strictly rejected in production");
+
     console.log("\n=======================================================");
     console.log("   All Rate Limiter Security Tests Passed!             ");
     console.log("=======================================================\n");

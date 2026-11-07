@@ -88,21 +88,28 @@ export function sanitizeLogMessage(message: string): string {
 
 /**
  * Retrieves the secret key used for HMAC-SHA256 correlation hashing.
- * In production mode, RATE_LIMIT_LOG_SECRET is mandatory (min 16 characters).
- * If missing in production, throws a security error to prevent unkeyed hashing fallback.
+ * In production mode, RATE_LIMIT_LOG_SECRET is mandatory with at least 32 bytes of entropy (min 32 characters).
+ * If missing or insufficient in production, throws a security error to prevent unkeyed hashing fallback.
  * In development/test mode, falls back to a deterministic development key if not configured.
  */
 export function getLogHashSecret(secretOverride?: string): string {
-  if (secretOverride) return secretOverride;
+  if (secretOverride) {
+    if (process.env.NODE_ENV === "production" && secretOverride.trim().length < 32) {
+      throw new Error(
+        "[CRITICAL_SECURITY_ERROR] RATE_LIMIT_LOG_SECRET requires at least 32 characters (32 bytes entropy) in production."
+      );
+    }
+    return secretOverride;
+  }
 
   const envSecret = process.env.RATE_LIMIT_LOG_SECRET;
-  if (envSecret && envSecret.trim().length >= 16) {
+  if (envSecret && envSecret.trim().length >= 32) {
     return envSecret.trim();
   }
 
   if (process.env.NODE_ENV === "production") {
     throw new Error(
-      "[CRITICAL_SECURITY_ERROR] RATE_LIMIT_LOG_SECRET is required in production (min 16 characters) for keyed log correlation."
+      "[CRITICAL_SECURITY_ERROR] RATE_LIMIT_LOG_SECRET is required in production (min 32 characters / 32 bytes entropy) for keyed log correlation."
     );
   }
 

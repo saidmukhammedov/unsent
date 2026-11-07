@@ -1,6 +1,6 @@
 # ==============================================================================
 # UNSENT — Production Multi-Stage Dockerfile for Google Cloud Run
-# Architecture: Node.js 22 LTS / Debian Slim / Standalone Next.js
+# Architecture: Node.js 22 LTS / Debian Bookworm Slim / Standalone Next.js
 # Targets:
 #   1. runner (default): Minimal standalone web service for Cloud Run
 #   2. migrator: Dedicated container for executing Prisma migrations via Cloud Run Jobs
@@ -10,7 +10,7 @@
 # ------------------------------------------------------------------------------
 # Stage 1: Dependency Installation & Native Binary Compilation
 # ------------------------------------------------------------------------------
-FROM node:22-slim AS deps
+FROM node:22-bookworm-slim AS deps
 WORKDIR /app
 
 # Install native compilation dependencies for Argon2 (C++ / node-gyp) & OpenSSL for Prisma
@@ -32,7 +32,7 @@ RUN pnpm install --frozen-lockfile
 # ------------------------------------------------------------------------------
 # Stage 2: Application Build
 # ------------------------------------------------------------------------------
-FROM node:22-slim AS builder
+FROM node:22-bookworm-slim AS builder
 WORKDIR /app
 
 RUN apt-get update && apt-get install -y --no-install-recommends \
@@ -58,7 +58,7 @@ RUN pnpm build
 # ------------------------------------------------------------------------------
 # Stage 3: Dedicated Migration Runner (Cloud Run Job / Standalone Migration Target)
 # ------------------------------------------------------------------------------
-FROM node:22-slim AS migrator
+FROM node:22-bookworm-slim AS migrator
 WORKDIR /app
 
 RUN apt-get update && apt-get install -y --no-install-recommends \
@@ -82,7 +82,7 @@ ENTRYPOINT ["pnpm", "prisma", "migrate", "deploy"]
 # ------------------------------------------------------------------------------
 # Stage 4: Production Minimal Runner (Cloud Run Service)
 # ------------------------------------------------------------------------------
-FROM node:22-slim AS runner
+FROM node:22-bookworm-slim AS runner
 WORKDIR /app
 
 # Production environment defaults
@@ -118,8 +118,8 @@ EXPOSE 8080
 
 # Health check probe for local Docker container testing
 # NOTE: Google Cloud Run ignores this Dockerfile HEALTHCHECK directive.
-# Cloud Run health checks must be explicitly configured via gcloud deployment flags
-# (--startup-probe-path=/api/health and optional --liveness-probe-path=/api/health).
+# Cloud Run health checks must be explicitly configured via gcloud deployment flags:
+# (--startup-probe="httpGet.path=/api/health,httpGet.port=8080,initialDelaySeconds=5,timeoutSeconds=3,periodSeconds=10,failureThreshold=6").
 HEALTHCHECK --interval=30s --timeout=5s --start-period=10s --retries=3 \
   CMD curl -f http://localhost:8080/api/health || exit 1
 
